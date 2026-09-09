@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
-	github.com/relizaio/rearm-client-go v0.0.0
+	github.com/relizaio/rearm-client-go v0.0.0-20260909201618-1e8bb13db835
 )
 
 require (
@@ -35,4 +35,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
