@@ -67,6 +67,11 @@ func normVcsURI(u string) string {
 // it, so a stable configuration never shows drift; otherwise the server's value.
 func keepEquivalent(configured types.String, server *string, same func(a, b string) bool) types.String {
 	if server == nil || *server == "" {
+		// The server records some of these only on creation (a repository's type, for
+		// example); when it has nothing, the configured value stands rather than drifting to null.
+		if !configured.IsNull() && !configured.IsUnknown() {
+			return configured
+		}
 		return types.StringNull()
 	}
 	if !configured.IsNull() && !configured.IsUnknown() && same(configured.ValueString(), *server) {
