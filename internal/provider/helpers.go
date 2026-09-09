@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -44,4 +46,31 @@ func boolOrNull(p *bool) types.Bool {
 		return types.BoolNull()
 	}
 	return types.BoolValue(*p)
+}
+
+// sameVcsURI reports whether two repository URIs name the same repository once ReARM's
+// normalisation (scheme dropped, trailing slash and .git ignored, case-insensitive host) is applied.
+func sameVcsURI(a, b string) bool {
+	return normVcsURI(a) == normVcsURI(b)
+}
+
+func normVcsURI(u string) string {
+	u = strings.TrimSpace(u)
+	for _, p := range []string{"https://", "http://", "ssh://", "git@"} {
+		u = strings.TrimPrefix(u, p)
+	}
+	u = strings.TrimSuffix(strings.TrimSuffix(u, "/"), ".git")
+	return strings.ToLower(u)
+}
+
+// keepEquivalent returns the configured value when the server's value is only a normalised form of
+// it, so a stable configuration never shows drift; otherwise the server's value.
+func keepEquivalent(configured types.String, server *string, same func(a, b string) bool) types.String {
+	if server == nil || *server == "" {
+		return types.StringNull()
+	}
+	if !configured.IsNull() && !configured.IsUnknown() && same(configured.ValueString(), *server) {
+		return configured
+	}
+	return types.StringValue(*server)
 }

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -145,8 +146,8 @@ func (r *componentResource) read(ctx context.Context, m *componentModel, diags *
 		m.MarketingVersionSchema = strOrNull(c.MarketingVersionSchema)
 		m.VersionType = strOrNull(c.VersionType)
 		m.FeatureBranchVersioning = strOrNull(c.FeatureBranchVersioning)
-		m.VcsURI = strOrNull(c.VcsUri)
-		m.VcsType = strOrNull(c.VcsType)
+		m.VcsURI = keepEquivalent(m.VcsURI, c.VcsUri, sameVcsURI)
+		m.VcsType = keepEquivalent(m.VcsType, c.VcsType, strings.EqualFold)
 		m.RepoPath = strOrNull(c.RepoPath)
 		m.Nature = strOrNull(c.Nature)
 		m.DeviceClass = strOrNull(c.DeviceClass)
