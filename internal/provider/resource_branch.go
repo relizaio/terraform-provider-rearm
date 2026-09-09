@@ -65,7 +65,7 @@ func (r *branchResource) Metadata(_ context.Context, req resource.MetadataReques
 func (r *branchResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "A branch of a component, or a feature set of a product, identified by component name and branch name. " +
-			"Dependencies and patterns are managed as a whole when their blocks are present; attributes left unset keep whatever ReARM has.",
+			"The dependency and dependency_pattern blocks are owned as a whole (omitting them means none); scalar attributes left unset keep whatever ReARM has.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{Computed: true, Description: "component/name",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
@@ -130,8 +130,9 @@ func (m *branchModel) toSpec() *catalog.BranchesFile {
 		AutoIntegrate:                 optEnum[rearm.AutoIntegrateState](m.AutoIntegrate),
 		FindingAnalyticsParticipation: optEnum[rearm.FindingAnalyticsParticipation](m.FindingAnalyticsParticipation),
 	}
-	if m.Dependencies != nil {
-		b.Dependencies = []*rearm.DependencySpecInput{}
+	// Blocks are owned as a whole: omitted means none, so an empty list is sent and the server clears.
+	b.Dependencies = []*rearm.DependencySpecInput{}
+	{
 		for _, d := range m.Dependencies {
 			b.Dependencies = append(b.Dependencies, &rearm.DependencySpecInput{
 				Component:       d.Component.ValueString(),
@@ -142,8 +143,8 @@ func (m *branchModel) toSpec() *catalog.BranchesFile {
 			})
 		}
 	}
-	if m.DependencyPatterns != nil {
-		b.DependencyPatterns = []*rearm.DependencyPatternSpecInput{}
+	b.DependencyPatterns = []*rearm.DependencyPatternSpecInput{}
+	{
 		for _, p := range m.DependencyPatterns {
 			b.DependencyPatterns = append(b.DependencyPatterns, &rearm.DependencyPatternSpecInput{
 				Pattern:          p.Pattern.ValueString(),
@@ -193,9 +194,8 @@ func (r *branchResource) read(ctx context.Context, m *branchModel, diags *diagAd
 		m.VcsBranch = strOrNull(b.VcsBranch)
 		m.AutoIntegrate = strOrNull(b.AutoIntegrate)
 		m.FindingAnalyticsParticipation = strOrNull(b.FindingAnalyticsParticipation)
-		// Blocks are only refreshed when the configuration manages them, so an unmanaged
-		// list on the server never shows up as drift.
-		if m.Dependencies != nil {
+		// Nested blocks are owned as a whole by the resource, so they always reflect the server.
+		{
 			deps := []dependencyModel{}
 			for _, d := range b.Dependencies {
 				if d == nil {
@@ -208,7 +208,7 @@ func (r *branchResource) read(ctx context.Context, m *branchModel, diags *diagAd
 			}
 			m.Dependencies = deps
 		}
-		if m.DependencyPatterns != nil {
+		{
 			pats := []dependencyPatternModel{}
 			for _, p := range b.DependencyPatterns {
 				if p == nil {

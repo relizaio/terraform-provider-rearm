@@ -43,8 +43,8 @@ resource "rearm_branch" "platform_stable" {
 | `rearm_branch` | `component/name` | declarative Branches apply / export |
 
 Semantics follow the declarative model: an attribute left unset is not managed by Terraform
-and keeps its value in ReARM; the `dependency` and `dependency_pattern` blocks are managed as
-a whole when present. Removing a resource from configuration removes it from state only, with
+and keeps its value in ReARM; the `dependency` and `dependency_pattern` blocks are owned as a
+whole, so omitting them means none. Removing a resource from configuration removes it from state only, with
 a warning: archiving is governed by the organization's declarative prune setting, not by a
 single resource.
 
