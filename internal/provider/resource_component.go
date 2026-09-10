@@ -109,8 +109,8 @@ func (m *componentModel) toSpec() *catalog.CatalogFile {
 		BranchSuffixMode:        optEnum[rearm.BranchSuffixMode](m.BranchSuffixMode),
 	}
 	f := false
-	return &catalog.CatalogFile{Kind: catalog.KindCatalog, CatalogSpecInput: rearm.CatalogSpecInput{
-		Version: 1, Authoritative: &f, Components: []*rearm.CatalogComponentInput{comp}}}
+	return &catalog.CatalogFile{CatalogSpecInput: rearm.CatalogSpecInput{
+		Kind: rearm.DeclarativeKindCatalog, Version: 1, Authoritative: &f, Components: []*rearm.CatalogComponentInput{comp}}}
 }
 
 func (r *componentResource) apply(ctx context.Context, m *componentModel, diags *diagAdder) bool {

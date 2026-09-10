@@ -155,8 +155,8 @@ func (m *branchModel) toSpec() *catalog.BranchesFile {
 		}
 	}
 	f := false
-	return &catalog.BranchesFile{Kind: catalog.KindBranches, BranchesSpecInput: rearm.BranchesSpecInput{
-		Version: 1, Component: m.Component.ValueString(), Authoritative: &f, Branches: []*rearm.BranchSpecInput{b}}}
+	return &catalog.BranchesFile{BranchesSpecInput: rearm.BranchesSpecInput{
+		Kind: rearm.DeclarativeKindBranches, Version: 1, Component: m.Component.ValueString(), Authoritative: &f, Branches: []*rearm.BranchSpecInput{b}}}
 }
 
 func (r *branchResource) apply(ctx context.Context, m *branchModel, diags *diagAdder) bool {
