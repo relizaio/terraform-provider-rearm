@@ -177,8 +177,8 @@ func (r *branchResource) apply(ctx context.Context, m *branchModel, diags *diagA
 func (r *branchResource) read(ctx context.Context, m *branchModel, diags *diagAdder) bool {
 	f, err := catalog.ExportBranches(ctx, r.client, m.Component.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return false
+		if catalog.IsNotFound(err) {
+			return false // component or branch gone on the server: the caller drops it from state
 		}
 		diags.err("ReARM export failed", err.Error())
 		return false

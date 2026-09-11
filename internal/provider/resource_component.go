@@ -132,6 +132,9 @@ func (r *componentResource) apply(ctx context.Context, m *componentModel, diags 
 func (r *componentResource) read(ctx context.Context, m *componentModel, diags *diagAdder) bool {
 	f, err := catalog.ExportCatalog(ctx, r.client, []string{m.Name.ValueString()})
 	if err != nil {
+		if catalog.IsNotFound(err) {
+			return false // gone on the server: the caller drops it from state
+		}
 		diags.err("ReARM export failed", err.Error())
 		return false
 	}
