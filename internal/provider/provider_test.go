@@ -21,7 +21,7 @@ func TestProviderSchema(t *testing.T) {
 	if diags := resp.Schema.ValidateImplementation(ctx); diags.HasError() {
 		t.Fatalf("provider schema implementation: %v", diags)
 	}
-	for _, a := range []string{"url", "api_key_id", "api_key"} {
+	for _, a := range []string{"uri", "api_key_id", "api_key"} {
 		if _, ok := resp.Schema.Attributes[a]; !ok {
 			t.Errorf("provider schema lacks attribute %q", a)
 		}
