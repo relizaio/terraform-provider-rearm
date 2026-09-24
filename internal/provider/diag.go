@@ -6,3 +6,5 @@ import "github.com/hashicorp/terraform-plugin-framework/diag"
 type diagAdder struct{ d *diag.Diagnostics }
 
 func (a *diagAdder) err(summary, detail string) { a.d.AddError(summary, detail) }
+
+func (a *diagAdder) warn(summary, detail string) { a.d.AddWarning(summary, detail) }

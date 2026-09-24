@@ -41,6 +41,8 @@ resource "rearm_branch" "platform_stable" {
 |---|---|---|
 | `rearm_component` | component name | declarative Catalog apply / export |
 | `rearm_branch` | `component/name` | declarative Branches apply / export |
+| `rearm_agent_board` | board name | board file apply / export; delete archives |
+| `rearm_agent_role_preset` | preset name | presets file (one preset, not authoritative); delete deactivates |
 
 Semantics follow the declarative model: an attribute left unset is not managed by Terraform
 and keeps its value in ReARM; the `dependency` and `dependency_pattern` blocks are owned as a
@@ -48,8 +50,17 @@ whole, so omitting them means none. Removing a resource from configuration remov
 a warning: archiving is governed by the organization's declarative prune setting, not by a
 single resource.
 
+A board's `roles`, when set, is its role list: a role not in it is deactivated (never deleted,
+since tasks point at it), and `roles = []` deactivates them all; left unset, the roles are not
+managed. The board's nested attributes (`settings`, a role's `strength`, `required_inputs`,
+`produces_outputs`) follow the same rule: unset is not managed, `[]` is none. Destroying a board
+archives it, keeping its tasks and history; destroying a preset deactivates it. A change that
+leaves tasks waiting on a deactivated role comes back as a Terraform warning.
+
 Import: `terraform import rearm_component.api payments-api`,
-`terraform import rearm_branch.platform_stable acme-platform/stable`.
+`terraform import rearm_branch.platform_stable acme-platform/stable`,
+`terraform import rearm_agent_board.platform platform`,
+`terraform import rearm_agent_role_preset.coder coder`.
 
 ## Development
 
