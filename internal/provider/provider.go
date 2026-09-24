@@ -85,6 +85,8 @@ func (p *rearmProvider) Resources(_ context.Context) []func() resource.Resource 
 	return []func() resource.Resource{
 		NewComponentResource,
 		NewBranchResource,
+		NewAgentBoardResource,
+		NewAgentRolePresetResource,
 	}
 }
 
