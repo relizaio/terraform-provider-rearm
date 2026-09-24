@@ -77,7 +77,7 @@ func roleAttributes() map[string]schema.Attribute {
 		"necessity":              schema.StringAttribute{Optional: true, Description: "REQUIRED or OPTIONAL."},
 		"human_gate":             schema.StringAttribute{Optional: true, Description: "NONE, ON_PASS or ON_ANY_SIGNOFF."},
 		"required_capabilities":  schema.ListAttribute{Optional: true, ElementType: types.StringType},
-		"hop_budget_micros":      schema.Int64Attribute{Optional: true, Description: "Most one assignment of this role may spend, in USD micros."},
+		"hop_budget_micros":      schema.Int64Attribute{Optional: true, Description: "Allowance for one assignment of this role, in USD micros: the budget projection's estimate when the board has no history for the role, told to the worker at assignment, and flagged on the hop and the board when a hop exceeds it. Not enforced mid-hop."},
 		"required_inputs": schema.ListNestedAttribute{
 			Optional:    true,
 			Description: "Inputs the role reads. Set, it replaces the role's list; [] clears it.",

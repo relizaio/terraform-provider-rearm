@@ -34,7 +34,7 @@ resource "rearm_agent_board" "platform" {
       required_inputs = [
         { kind = "DOCUMENT", specification = "ARCHITECTURE", scope = "TASK", min_lifecycle = "ASSEMBLED" },
       ]
-      hop_budget_micros = 2000000
+      hop_budget_micros = 2000000 # allowance per hop: flagged when exceeded, not enforced
       strength = {
         required_strength = 0.75
         strength_category = "REVIEWER"
