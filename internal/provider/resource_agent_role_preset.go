@@ -42,6 +42,7 @@ type presetModel struct {
 	HumanGate            types.String          `tfsdk:"human_gate"`
 	RequiredCapabilities []types.String        `tfsdk:"required_capabilities"`
 	HopBudgetMicros      types.Int64           `tfsdk:"hop_budget_micros"`
+	BlindReview          types.Bool            `tfsdk:"blind_review"`
 	RequiredInputs       []requiredInputModel  `tfsdk:"required_inputs"`
 	ProducesOutputs      []producedOutputModel `tfsdk:"produces_outputs"`
 	Strength             *strengthModel        `tfsdk:"strength"`
@@ -52,13 +53,14 @@ func (p *presetModel) role() roleModel {
 	return roleModel{Name: p.Name, Prompt: p.Prompt, OrderIndex: p.OrderIndex, WipLimit: p.WipLimit,
 		RequireDistinctAgent: p.RequireDistinctAgent, Active: p.Active, Kind: p.Kind, Necessity: p.Necessity,
 		HumanGate: p.HumanGate, RequiredCapabilities: p.RequiredCapabilities, HopBudgetMicros: p.HopBudgetMicros,
-		RequiredInputs: p.RequiredInputs, ProducesOutputs: p.ProducesOutputs, Strength: p.Strength}
+		BlindReview: p.BlindReview, RequiredInputs: p.RequiredInputs, ProducesOutputs: p.ProducesOutputs, Strength: p.Strength}
 }
 
 func (p *presetModel) setRole(r roleModel) {
 	p.Name, p.Prompt, p.OrderIndex, p.WipLimit = r.Name, r.Prompt, r.OrderIndex, r.WipLimit
 	p.RequireDistinctAgent, p.Active, p.Kind, p.Necessity = r.RequireDistinctAgent, r.Active, r.Kind, r.Necessity
 	p.HumanGate, p.RequiredCapabilities, p.HopBudgetMicros = r.HumanGate, r.RequiredCapabilities, r.HopBudgetMicros
+	p.BlindReview = r.BlindReview
 	p.RequiredInputs, p.ProducesOutputs, p.Strength = r.RequiredInputs, r.ProducesOutputs, r.Strength
 }
 

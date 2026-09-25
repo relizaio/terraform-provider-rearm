@@ -298,6 +298,7 @@ func emptyRole() roleModel {
 		Name: types.StringNull(), Prompt: types.StringNull(), OrderIndex: types.Int64Null(), WipLimit: types.Int64Null(),
 		RequireDistinctAgent: types.BoolNull(), Active: types.BoolNull(), Kind: types.StringNull(),
 		Necessity: types.StringNull(), HumanGate: types.StringNull(), HopBudgetMicros: types.Int64Null(),
+		BlindReview: types.BoolNull(),
 	}
 }
 

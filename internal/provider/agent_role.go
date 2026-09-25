@@ -27,6 +27,7 @@ type roleModel struct {
 	HumanGate            types.String          `tfsdk:"human_gate"`
 	RequiredCapabilities []types.String        `tfsdk:"required_capabilities"`
 	HopBudgetMicros      types.Int64           `tfsdk:"hop_budget_micros"`
+	BlindReview          types.Bool            `tfsdk:"blind_review"`
 	RequiredInputs       []requiredInputModel  `tfsdk:"required_inputs"`
 	ProducesOutputs      []producedOutputModel `tfsdk:"produces_outputs"`
 	Strength             *strengthModel        `tfsdk:"strength"`
@@ -78,6 +79,7 @@ func roleAttributes() map[string]schema.Attribute {
 		"human_gate":             schema.StringAttribute{Optional: true, Description: "NONE, ON_PASS or ON_ANY_SIGNOFF."},
 		"required_capabilities":  schema.ListAttribute{Optional: true, ElementType: types.StringType},
 		"hop_budget_micros":      schema.Int64Attribute{Optional: true, Description: "Allowance for one assignment of this role, in USD micros: the budget projection's estimate when the board has no history for the role, told to the worker at assignment, and flagged on the hop and the board when a hop exceeds it. Not enforced mid-hop."},
+		"blind_review":           schema.BoolAttribute{Optional: true, Description: "A session assigned in this role reads its task without the earlier hops' notes, sessions and agents; documents and outcomes stay. Operator-only; default false."},
 		"required_inputs": schema.ListNestedAttribute{
 			Optional:    true,
 			Description: "Inputs the role reads. Set, it replaces the role's list; [] clears it.",
@@ -131,6 +133,7 @@ func roleToSpec(r *roleModel) map[string]any {
 	putString(m, "necessity", r.Necessity)
 	putString(m, "humanGate", r.HumanGate)
 	putInt(m, "hopBudgetMicros", r.HopBudgetMicros)
+	putBool(m, "blindReview", r.BlindReview)
 	if r.RequiredCapabilities != nil {
 		caps := []any{}
 		for _, c := range r.RequiredCapabilities {
@@ -191,6 +194,7 @@ func roleFromExport(r *roleModel, e map[string]any, full bool) {
 	readString(&r.Necessity, e, "necessity", full)
 	readString(&r.HumanGate, e, "humanGate", full)
 	readInt(&r.HopBudgetMicros, e, "hopBudgetMicros", full)
+	readBool(&r.BlindReview, e, "blindReview", full)
 	if full || r.RequiredCapabilities != nil {
 		r.RequiredCapabilities = nil
 		for _, c := range list(e["requiredCapabilities"]) {
