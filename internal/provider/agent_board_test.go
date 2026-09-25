@@ -40,7 +40,7 @@ func TestBoardSpecCarriesOnlyWhatIsConfigured(t *testing.T) {
 	m := boardModel()
 	m.Settings = &boardSettingsModel{CycleCap: types.Int64Value(4), BudgetMicros: types.Int64Null(),
 		SoftAlertPercent: types.Int64Null(), NoProgressRepeatsToStop: types.Int64Null(),
-		BlockingPriority: types.Int64Null(), CompletionPriority: types.Int64Null()}
+		BlockingPriority: types.Int64Null(), CompletionPriority: types.Int64Null(), HumanQueueAgeMinutes: types.Int64Null()}
 	s := m.toSpec().Spec
 	if _, ok := s["description"]; ok {
 		t.Error("an unset attribute is not sent")
@@ -208,6 +208,25 @@ func TestReadKeepsTheConfiguredSpellingOfSourcesAndRepository(t *testing.T) {
 	m.fromExport(e, false)
 	if m.Sources[0].ValueString() != "github:acme/other" {
 		t.Errorf("a real change shows: %v", m.Sources)
+	}
+}
+
+// human_queue_age_minutes (task 82880ea6): sent when set, left out when not, read on import.
+func TestHumanQueueAgeMinutesSetAndRead(t *testing.T) {
+	m := boardModel()
+	m.Settings = &boardSettingsModel{BudgetMicros: types.Int64Null(), SoftAlertPercent: types.Int64Null(),
+		CycleCap: types.Int64Null(), NoProgressRepeatsToStop: types.Int64Null(), BlockingPriority: types.Int64Null(),
+		CompletionPriority: types.Int64Null(), HumanQueueAgeMinutes: types.Int64Value(30)}
+	settings := m.toSpec().Spec["settings"].(map[string]any)
+	if len(settings) != 1 || settings["humanQueueAgeMinutes"] != int64(30) {
+		t.Errorf("only the configured setting: %v", settings)
+	}
+	imported := boardModel()
+	e := exported()
+	e["settings"] = map[string]any{"humanQueueAgeMinutes": float64(45)}
+	imported.fromExport(e, true)
+	if imported.Settings == nil || imported.Settings.HumanQueueAgeMinutes.ValueInt64() != 45 {
+		t.Errorf("an import reads the threshold: %+v", imported.Settings)
 	}
 }
 
