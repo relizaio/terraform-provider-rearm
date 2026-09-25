@@ -1,4 +1,9 @@
 resource "rearm_agent_board" "platform" {
+  # Recorded with each apply; repo and commit come from the provider or the CI environment.
+  provenance = {
+    path = "terraform/boards.tf"
+  }
+
   name        = "platform"
   description = "the platform team's board"
   target      = rearm_component.api.name

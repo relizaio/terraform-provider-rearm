@@ -4,7 +4,8 @@ go 1.26.0
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
-	github.com/relizaio/rearm-client-go v0.1.7-0.20260924191941-76a1819a39b4
+	github.com/hashicorp/terraform-plugin-go v0.31.0
+	github.com/relizaio/rearm-client-go v0.1.7-0.20260925021603-46a0a8e411f1
 )
 
 require (
@@ -19,7 +20,6 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.7.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
-	github.com/hashicorp/terraform-plugin-go v0.31.0 // indirect
 	github.com/hashicorp/terraform-plugin-log v0.11.0 // indirect
 	github.com/hashicorp/terraform-registry-address v0.4.0 // indirect
 	github.com/hashicorp/terraform-svchost v0.1.1 // indirect
