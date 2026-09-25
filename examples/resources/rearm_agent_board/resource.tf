@@ -43,6 +43,7 @@ resource "rearm_agent_board" "platform" {
         { kind = "DOCUMENT", specification = "ARCHITECTURE", scope = "TASK", min_lifecycle = "ASSEMBLED" },
       ]
       hop_budget_micros = 2000000 # allowance per hop: flagged when exceeded, not enforced
+      blind_review      = true    # reads the task without earlier hops' notes, sessions and agents
       strength = {
         required_strength = 0.75
         strength_category = "REVIEWER"
