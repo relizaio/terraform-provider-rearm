@@ -5,6 +5,9 @@ resource "rearm_agent_board" "platform" {
   sources     = ["github:acme/platform", "github:acme/platform-docs"]
 
   documents_repo = "https://github.com/acme/platform-docs"
+
+  coordinator_capabilities = ["PR_MERGE"] # the coordinator merges once the last required role has passed
+
   document_paths = {
     ARCHITECTURE = "docs/design/{task}.md"
   }

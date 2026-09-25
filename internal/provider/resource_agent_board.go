@@ -40,6 +40,7 @@ type agentBoardModel struct {
 	DefaultTaskLevel       types.Int64             `tfsdk:"default_task_level"`
 	DefaultInputResolution types.String            `tfsdk:"default_input_resolution"`
 	CoordinatorPrompt      types.String            `tfsdk:"coordinator_prompt"`
+	CoordinatorCaps        []types.String          `tfsdk:"coordinator_capabilities"`
 	Settings               *boardSettingsModel     `tfsdk:"settings"`
 	Roles                  []roleModel             `tfsdk:"roles"`
 }
@@ -84,6 +85,10 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"default_input_resolution": schema.StringAttribute{Optional: true, Description: "LATEST_PASSING or STRICT_LATEST."},
 			"coordinator_prompt": schema.StringAttribute{Optional: true,
 				Description: "Left unset on a new board, it is seeded from the organization's coordinator preset."},
+			"coordinator_capabilities": schema.SetAttribute{Optional: true, ElementType: types.StringType,
+				Description: "Verbs the coordinator seat performs itself on this board: PR_MERGE when it merges once " +
+					"the last required role has passed, CODE_PUSH on a docs-only board. The tracker verbs are always " +
+					"the coordinator's and are refused here. Unset is not managed; [] is none."},
 			"settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Budget and stops. Only the settings set here are managed.",
@@ -135,6 +140,13 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 			src = append(src, v.ValueString())
 		}
 		s["sources"] = src
+	}
+	if m.CoordinatorCaps != nil {
+		caps := []any{}
+		for _, v := range m.CoordinatorCaps {
+			caps = append(caps, v.ValueString())
+		}
+		s["coordinatorCapabilities"] = caps
 	}
 	if m.DocumentPaths != nil {
 		p := map[string]any{}
@@ -196,6 +208,17 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		}
 		if full && len(m.Sources) == 0 {
 			m.Sources = nil
+		}
+	}
+	if full || m.CoordinatorCaps != nil {
+		// The export omits the key when there are none; a configured [] then reads back as [].
+		caps := []types.String{}
+		for _, v := range list(spec["coordinatorCapabilities"]) {
+			caps = append(caps, types.StringValue(str(v)))
+		}
+		m.CoordinatorCaps = caps
+		if full && len(caps) == 0 {
+			m.CoordinatorCaps = nil
 		}
 	}
 	if full || m.DocumentPaths != nil {
