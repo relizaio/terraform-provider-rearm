@@ -175,7 +175,8 @@ func TestImportReadsEverything(t *testing.T) {
 func TestPresetFileIsOnePresetAndNotAuthoritative(t *testing.T) {
 	p := presetModel{Name: types.StringValue("coder"), Prompt: types.StringValue("code"), Active: types.BoolNull(),
 		OrderIndex: types.Int64Null(), WipLimit: types.Int64Null(), RequireDistinctAgent: types.BoolNull(),
-		Kind: types.StringNull(), Necessity: types.StringNull(), HumanGate: types.StringNull(), HopBudgetMicros: types.Int64Null()}
+		Kind: types.StringNull(), Necessity: types.StringNull(), HumanGate: types.StringNull(), HopBudgetMicros: types.Int64Null(),
+		BlindReview: types.BoolNull()}
 	role := p.role()
 	f := presetFile(roleToSpec(&role))
 	if f.Spec["authoritative"] != false {
@@ -207,5 +208,35 @@ func TestReadKeepsTheConfiguredSpellingOfSourcesAndRepository(t *testing.T) {
 	m.fromExport(e, false)
 	if m.Sources[0].ValueString() != "github:acme/other" {
 		t.Errorf("a real change shows: %v", m.Sources)
+	}
+}
+
+// blind_review (task 0192a587): left out when unset, so a board file never switches it off by
+// omission; sent when set; imported from the export; refreshed only when the state manages it.
+func TestBlindReviewUnsetSetAndRead(t *testing.T) {
+	r := emptyRole()
+	r.Name = types.StringValue("reviewer")
+	if _, ok := roleToSpec(&r)["blindReview"]; ok {
+		t.Error("an unset blind_review is left out of the spec")
+	}
+	r.BlindReview = types.BoolValue(true)
+	if roleToSpec(&r)["blindReview"] != true {
+		t.Error("a set blind_review is sent")
+	}
+
+	imported := emptyRole()
+	roleFromExport(&imported, map[string]any{"name": "reviewer", "blindReview": true}, true)
+	if !imported.BlindReview.ValueBool() {
+		t.Error("an import reads blindReview")
+	}
+	managed := emptyRole()
+	roleFromExport(&managed, map[string]any{"name": "reviewer", "blindReview": true}, false)
+	if !managed.BlindReview.IsNull() {
+		t.Error("a refresh leaves an unmanaged blind_review alone")
+	}
+	managed.BlindReview = types.BoolValue(false)
+	roleFromExport(&managed, map[string]any{"name": "reviewer", "blindReview": true}, false)
+	if !managed.BlindReview.ValueBool() {
+		t.Error("a managed blind_review follows the server")
 	}
 }
