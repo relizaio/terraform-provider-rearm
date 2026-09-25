@@ -57,6 +57,13 @@ type boardSettingsModel struct {
 
 func NewAgentBoardResource() resource.Resource { return &agentBoardResource{} }
 
+var _ resource.ResourceWithModifyPlan = &agentBoardResource{}
+
+// ModifyPlan warns when the only change is to the provenance block, which ReARM does not record.
+func (r *agentBoardResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	warnIfProvenanceOnly(req, resp)
+}
+
 func (r *agentBoardResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_agent_board"
 }

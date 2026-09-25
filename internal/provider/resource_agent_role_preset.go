@@ -64,6 +64,13 @@ func (p *presetModel) setRole(r roleModel) {
 
 func NewAgentRolePresetResource() resource.Resource { return &agentRolePresetResource{} }
 
+var _ resource.ResourceWithModifyPlan = &agentRolePresetResource{}
+
+// ModifyPlan warns when the only change is to the provenance block, which ReARM does not record.
+func (r *agentRolePresetResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	warnIfProvenanceOnly(req, resp)
+}
+
 func (r *agentRolePresetResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_agent_role_preset"
 }

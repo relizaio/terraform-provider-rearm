@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
 	rearm "github.com/relizaio/rearm-client-go"
 	"github.com/relizaio/rearm-client-go/catalog"
@@ -21,10 +22,12 @@ type sourceModel struct {
 	Commit types.String `tfsdk:"commit"`
 }
 
-const sourceDescription = "Where this configuration came from, recorded by ReARM with every apply " +
+const sourceDescription = "Where this configuration came from, sent to ReARM with every apply " +
 	"(declarative provenance). Each field set here overrides the provider's provenance for this " +
 	"resource; the rest fall through. Typically the provider carries repo and commit from CI and each " +
-	"resource names its file in path. Changing it re-applies the resource so the new provenance is recorded."
+	"resource names its file in path. ReARM records it with an apply that changes the resource: " +
+	"changing only this block updates Terraform state, and ReARM keeps the provenance of the last " +
+	"apply that changed something until the next one does."
 
 // resourceSourceAttribute is the optional provenance block every applying resource carries. It is
 // called provenance rather than source because Terraform reserves source in provider blocks, and
@@ -38,6 +41,52 @@ func resourceSourceAttribute() schema.SingleNestedAttribute {
 			"path":   schema.StringAttribute{Optional: true, Description: "File or module path within the repository."},
 			"commit": schema.StringAttribute{Optional: true, Description: "Commit the configuration was applied from."},
 		},
+	}
+}
+
+// provenanceOnlyChange reports whether the only planned change from state is under the provenance
+// block (gaps §1.12, T-1). ReARM restamps provenance only when an apply changes the spec, so such a
+// plan updates Terraform state and nothing in ReARM, and the plan says so rather than implying it
+// records anything.
+//
+// Diffs whose planned value is not fully known are placeholders, not changes: when anything in a
+// resource changes, the framework marks its Optional+Computed attributes that the configuration
+// leaves unset as unknown, and a real change elsewhere always shows up as a known diff of its own.
+// The root object differs whenever anything does, so its diff says nothing either.
+func provenanceOnlyChange(state, plan tftypes.Value) bool {
+	if state.IsNull() || plan.IsNull() {
+		return false
+	}
+	diffs, err := state.Diff(plan)
+	if err != nil {
+		return false
+	}
+	underProvenance := false
+	for _, d := range diffs {
+		steps := d.Path.Steps()
+		if len(steps) == 0 {
+			continue
+		}
+		if a, ok := steps[0].(tftypes.AttributeName); ok && string(a) == "provenance" {
+			underProvenance = true
+			continue
+		}
+		if d.Value2 != nil && !d.Value2.IsFullyKnown() {
+			continue
+		}
+		return false
+	}
+	return underProvenance
+}
+
+const provenanceOnlyWarning = "Only this resource's provenance block changed. ReARM records provenance with an " +
+	"apply that changes the resource, so this apply updates Terraform state only: ReARM keeps the " +
+	"provenance of the last apply that changed something, and records the new one with the next change."
+
+// warnIfProvenanceOnly is every applying resource's ModifyPlan.
+func warnIfProvenanceOnly(req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if provenanceOnlyChange(req.State.Raw, req.Plan.Raw) {
+		resp.Diagnostics.AddWarning("ReARM will not record this provenance change", provenanceOnlyWarning)
 	}
 }
 
