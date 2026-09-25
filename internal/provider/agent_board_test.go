@@ -85,6 +85,58 @@ func TestReadManagesOnlyWhatTheStateHolds(t *testing.T) {
 	}
 }
 
+func TestCoordinatorCapabilitiesUnsetEmptyAndSet(t *testing.T) {
+	m := boardModel()
+	if _, ok := m.toSpec().Spec["coordinatorCapabilities"]; ok {
+		t.Error("unset is not managed, so nothing is sent")
+	}
+	m.CoordinatorCaps = []types.String{}
+	if caps, ok := m.toSpec().Spec["coordinatorCapabilities"].([]any); !ok || len(caps) != 0 {
+		t.Error("[] is sent as an empty list, which clears them")
+	}
+	m.CoordinatorCaps = []types.String{types.StringValue("PR_MERGE")}
+	if caps := m.toSpec().Spec["coordinatorCapabilities"].([]any); len(caps) != 1 || caps[0] != "PR_MERGE" {
+		t.Errorf("set is sent as given: %v", caps)
+	}
+
+	withCaps := exported()
+	withCaps["coordinatorCapabilities"] = []any{"PR_MERGE"}
+
+	unmanaged := boardModel()
+	unmanaged.ID = types.StringValue("platform")
+	unmanaged.fromExport(withCaps, false)
+	if unmanaged.CoordinatorCaps != nil {
+		t.Error("unset stays unset whatever the server holds")
+	}
+
+	none := boardModel()
+	none.ID = types.StringValue("platform")
+	none.CoordinatorCaps = []types.String{}
+	none.fromExport(exported(), false)
+	if none.CoordinatorCaps == nil || len(none.CoordinatorCaps) != 0 {
+		t.Errorf("[] against a board with none reads back as [], not null: %v", none.CoordinatorCaps)
+	}
+
+	set := boardModel()
+	set.ID = types.StringValue("platform")
+	set.CoordinatorCaps = []types.String{types.StringValue("PR_MERGE")}
+	set.fromExport(withCaps, false)
+	if len(set.CoordinatorCaps) != 1 || set.CoordinatorCaps[0].ValueString() != "PR_MERGE" {
+		t.Errorf("a managed set reads back: %v", set.CoordinatorCaps)
+	}
+
+	imported := agentBoardModel{Name: types.StringValue("platform"), ID: types.StringNull()}
+	imported.fromExport(withCaps, true)
+	if len(imported.CoordinatorCaps) != 1 {
+		t.Errorf("import reads it: %v", imported.CoordinatorCaps)
+	}
+	importedNone := agentBoardModel{Name: types.StringValue("platform"), ID: types.StringNull()}
+	importedNone.fromExport(exported(), true)
+	if importedNone.CoordinatorCaps != nil {
+		t.Error("import of a board with none leaves it unset")
+	}
+}
+
 func TestReadDropsARoleSwitchedOffOutsideTerraform(t *testing.T) {
 	m := boardModel()
 	m.ID = types.StringValue("platform")
