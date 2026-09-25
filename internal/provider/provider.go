@@ -25,6 +25,7 @@ type providerModel struct {
 	URI      types.String `tfsdk:"uri"`
 	APIKeyID types.String `tfsdk:"api_key_id"`
 	APIKey   types.String `tfsdk:"api_key"`
+	Source   *sourceModel `tfsdk:"provenance"`
 }
 
 // New returns a provider factory.
@@ -54,6 +55,19 @@ func (p *rearmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp
 				Optional:    true,
 				Sensitive:   true,
 			},
+			"provenance": schema.SingleNestedAttribute{
+				Optional: true,
+				Description: "Where the configuration comes from, recorded by ReARM with every apply as its " +
+					"declarative provenance. Each field falls back to the CI environment: repo to " +
+					"GITHUB_SERVER_URL/GITHUB_REPOSITORY (GitHub Actions) or CI_PROJECT_URL (GitLab), commit to " +
+					"GITHUB_SHA or CI_COMMIT_SHA. path has no fallback; set it per resource. Values are " +
+					"recorded as given.",
+				Attributes: map[string]schema.Attribute{
+					"repo":   schema.StringAttribute{Optional: true, Description: "Repository URL."},
+					"path":   schema.StringAttribute{Optional: true, Description: "File or module path within the repository."},
+					"commit": schema.StringAttribute{Optional: true, Description: "Commit the configuration is applied from."},
+				},
+			},
 		},
 	}
 }
@@ -78,7 +92,7 @@ func (p *rearmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		return
 	}
 	resp.DataSourceData = client
-	resp.ResourceData = client
+	resp.ResourceData = &providerData{client: client, source: resolveProviderSource(cfg.Source, os.Getenv)}
 }
 
 func (p *rearmProvider) Resources(_ context.Context) []func() resource.Resource {

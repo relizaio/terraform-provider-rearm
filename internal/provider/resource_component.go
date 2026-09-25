@@ -25,6 +25,7 @@ var (
 // componentResource manages one component or product (the Catalog slice) by name.
 type componentResource struct {
 	client *rearm.Client
+	source *catalog.Source
 }
 
 type componentModel struct {
@@ -43,6 +44,7 @@ type componentModel struct {
 	Nature                  types.String `tfsdk:"nature"`
 	DeviceClass             types.String `tfsdk:"device_class"`
 	BranchSuffixMode        types.String `tfsdk:"branch_suffix_mode"`
+	Source                  *sourceModel `tfsdk:"provenance"`
 }
 
 func NewComponentResource() resource.Resource { return &componentResource{} }
@@ -56,6 +58,7 @@ func (r *componentResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Description: "A ReARM component or product, identified by name within the organization of the API key. " +
 			"Attributes left unset are not managed by Terraform and keep whatever ReARM has.",
 		Attributes: map[string]schema.Attribute{
+			"provenance": resourceSourceAttribute(),
 			"id": schema.StringAttribute{Computed: true, Description: "Same as name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"name": schema.StringAttribute{Required: true, Description: "Component name, unique in the organization.",
@@ -80,15 +83,9 @@ func (r *componentResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 }
 
 func (r *componentResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if pd := configured(req, resp); pd != nil {
+		r.client, r.source = pd.client, pd.source
 	}
-	c, ok := req.ProviderData.(*rearm.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *rearm.Client, got %T", req.ProviderData))
-		return
-	}
-	r.client = c
 }
 
 func (m *componentModel) toSpec() *catalog.CatalogFile {
@@ -114,7 +111,7 @@ func (m *componentModel) toSpec() *catalog.CatalogFile {
 }
 
 func (r *componentResource) apply(ctx context.Context, m *componentModel, diags *diagAdder) bool {
-	res, err := catalog.Apply(ctx, r.client, m.toSpec(), false, nil)
+	res, err := applySpec(ctx, r.client, m.toSpec(), false, sourceFor(r.source, m.Source))
 	if err != nil {
 		diags.err("ReARM apply failed", err.Error())
 		return false

@@ -25,6 +25,7 @@ var (
 // (ai-plans/agentic/declarative-boards.md): the board, its settings and its roles in one apply.
 type agentBoardResource struct {
 	client *rearm.Client
+	source *catalog.Source
 }
 
 type agentBoardModel struct {
@@ -42,6 +43,7 @@ type agentBoardModel struct {
 	CoordinatorPrompt      types.String            `tfsdk:"coordinator_prompt"`
 	Settings               *boardSettingsModel     `tfsdk:"settings"`
 	Roles                  []roleModel             `tfsdk:"roles"`
+	Source                 *sourceModel            `tfsdk:"provenance"`
 }
 
 type boardSettingsModel struct {
@@ -67,6 +69,7 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"Attributes left unset are not managed by Terraform and keep whatever ReARM has. Destroying the " +
 			"resource archives the board; its tasks and history stay.",
 		Attributes: map[string]schema.Attribute{
+			"provenance": resourceSourceAttribute(),
 			"id": schema.StringAttribute{Computed: true, Description: "Same as name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"name": schema.StringAttribute{Required: true, Description: "Board name, unique in the organization.",
@@ -107,15 +110,9 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *agentBoardResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if pd := configured(req, resp); pd != nil {
+		r.client, r.source = pd.client, pd.source
 	}
-	c, ok := req.ProviderData.(*rearm.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *rearm.Client, got %T", req.ProviderData))
-		return
-	}
-	r.client = c
 }
 
 // toSpec builds the board file from the plan: only what the configuration sets.
@@ -279,7 +276,7 @@ func anyNonNull(m map[string]any) bool {
 }
 
 func (r *agentBoardResource) apply(ctx context.Context, m *agentBoardModel, d *diagAdder) bool {
-	res, err := catalog.Apply(ctx, r.client, m.toSpec(), false, nil)
+	res, err := applySpec(ctx, r.client, m.toSpec(), false, sourceFor(r.source, m.Source))
 	if err != nil {
 		d.err("ReARM apply failed", err.Error())
 		return false

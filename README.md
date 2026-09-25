@@ -57,6 +57,20 @@ managed. The board's nested attributes (`settings`, a role's `strength`, `requir
 archives it, keeping its tasks and history; destroying a preset deactivates it. A change that
 leaves tasks waiting on a deactivated role comes back as a Terraform warning.
 
+### Provenance
+
+Every apply tells ReARM where the configuration came from, and ReARM records it as the entity's
+declarative provenance: the board header links to the repository and commit, and the board's feed
+names them. Set `provenance` on the provider and, per field, on any resource; a resource's field wins,
+the rest fall through. Unset provider fields fall back to the CI environment: `repo` to
+`GITHUB_SERVER_URL`/`GITHUB_REPOSITORY` in GitHub Actions or `CI_PROJECT_URL` in GitLab, `commit`
+to `GITHUB_SHA` or `CI_COMMIT_SHA`. `path` has no fallback, since a run cannot know which file a
+resource came from, so name it on the resource. Values are recorded as given: a run has no
+working tree, so unlike the CLI there is no "no commit when the file is dirty" check, and the
+environment is the honest default. `provenance` is not read back from ReARM; changing it re-applies
+the resource (the same spec, so nothing else changes) to record the new provenance. The block is
+called `provenance` rather than `source` because Terraform reserves `source` in provider blocks.
+
 Import: `terraform import rearm_component.api payments-api`,
 `terraform import rearm_branch.platform_stable acme-platform/stable`,
 `terraform import rearm_agent_board.platform platform`,
