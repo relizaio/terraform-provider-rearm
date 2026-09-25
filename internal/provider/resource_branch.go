@@ -25,6 +25,7 @@ var (
 // branchResource manages one branch of a component, or one feature set of a product (the Branches slice).
 type branchResource struct {
 	client *rearm.Client
+	source *catalog.Source
 }
 
 type dependencyModel struct {
@@ -54,9 +55,17 @@ type branchModel struct {
 	FindingAnalyticsParticipation types.String             `tfsdk:"finding_analytics_participation"`
 	Dependencies                  []dependencyModel        `tfsdk:"dependency"`
 	DependencyPatterns            []dependencyPatternModel `tfsdk:"dependency_pattern"`
+	Source                        *sourceModel             `tfsdk:"provenance"`
 }
 
 func NewBranchResource() resource.Resource { return &branchResource{} }
+
+var _ resource.ResourceWithModifyPlan = &branchResource{}
+
+// ModifyPlan warns when the only change is to the provenance block, which ReARM does not record.
+func (r *branchResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	warnIfProvenanceOnly(req, resp)
+}
 
 func (r *branchResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_branch"
@@ -67,6 +76,7 @@ func (r *branchResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		Description: "A branch of a component, or a feature set of a product, identified by component name and branch name. " +
 			"The dependency and dependency_pattern blocks are owned as a whole (omitting them means none); scalar attributes left unset keep whatever ReARM has.",
 		Attributes: map[string]schema.Attribute{
+			"provenance": resourceSourceAttribute(),
 			"id": schema.StringAttribute{Computed: true, Description: "component/name",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"component": schema.StringAttribute{Required: true, Description: "Owning component or product name.",
@@ -109,15 +119,9 @@ func (r *branchResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 }
 
 func (r *branchResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if pd := configured(req, resp); pd != nil {
+		r.client, r.source = pd.client, pd.source
 	}
-	c, ok := req.ProviderData.(*rearm.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *rearm.Client, got %T", req.ProviderData))
-		return
-	}
-	r.client = c
 }
 
 func (m *branchModel) toSpec() *catalog.BranchesFile {
@@ -160,7 +164,7 @@ func (m *branchModel) toSpec() *catalog.BranchesFile {
 }
 
 func (r *branchResource) apply(ctx context.Context, m *branchModel, diags *diagAdder) bool {
-	res, err := catalog.Apply(ctx, r.client, m.toSpec(), false, nil)
+	res, err := applySpec(ctx, r.client, m.toSpec(), false, sourceFor(r.source, m.Source))
 	if err != nil {
 		diags.err("ReARM apply failed", err.Error())
 		return false

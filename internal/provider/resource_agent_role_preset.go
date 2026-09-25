@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -26,6 +25,7 @@ var (
 // are left alone. Presets seed new boards; changing one does not change existing boards.
 type agentRolePresetResource struct {
 	client *rearm.Client
+	source *catalog.Source
 }
 
 // presetModel is a role at the top level, with the resource's id beside it.
@@ -45,6 +45,7 @@ type presetModel struct {
 	RequiredInputs       []requiredInputModel  `tfsdk:"required_inputs"`
 	ProducesOutputs      []producedOutputModel `tfsdk:"produces_outputs"`
 	Strength             *strengthModel        `tfsdk:"strength"`
+	Source               *sourceModel          `tfsdk:"provenance"`
 }
 
 func (p *presetModel) role() roleModel {
@@ -63,6 +64,13 @@ func (p *presetModel) setRole(r roleModel) {
 
 func NewAgentRolePresetResource() resource.Resource { return &agentRolePresetResource{} }
 
+var _ resource.ResourceWithModifyPlan = &agentRolePresetResource{}
+
+// ModifyPlan warns when the only change is to the provenance block, which ReARM does not record.
+func (r *agentRolePresetResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	warnIfProvenanceOnly(req, resp)
+}
+
 func (r *agentRolePresetResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_agent_role_preset"
 }
@@ -71,6 +79,7 @@ func (r *agentRolePresetResource) Schema(_ context.Context, _ resource.SchemaReq
 	attrs := roleAttributes()
 	attrs["id"] = schema.StringAttribute{Computed: true, Description: "Same as name.",
 		PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}}
+	attrs["provenance"] = resourceSourceAttribute()
 	attrs["name"] = schema.StringAttribute{Required: true,
 		Description:   "Preset name. coordinator-tracker and coordinator-board-truth seed a new board's coordinator prompt.",
 		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}}
@@ -82,15 +91,9 @@ func (r *agentRolePresetResource) Schema(_ context.Context, _ resource.SchemaReq
 }
 
 func (r *agentRolePresetResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if pd := configured(req, resp); pd != nil {
+		r.client, r.source = pd.client, pd.source
 	}
-	c, ok := req.ProviderData.(*rearm.Client)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *rearm.Client, got %T", req.ProviderData))
-		return
-	}
-	r.client = c
 }
 
 func presetFile(entry map[string]any) *catalog.RolePresetsFile {
@@ -102,7 +105,7 @@ func presetFile(entry map[string]any) *catalog.RolePresetsFile {
 
 func (r *agentRolePresetResource) apply(ctx context.Context, m *presetModel, d *diagAdder) bool {
 	role := m.role()
-	res, err := catalog.Apply(ctx, r.client, presetFile(roleToSpec(&role)), false, nil)
+	res, err := applySpec(ctx, r.client, presetFile(roleToSpec(&role)), false, sourceFor(r.source, m.Source))
 	if err != nil {
 		d.err("ReARM apply failed", err.Error())
 		return false
@@ -186,12 +189,19 @@ func (r *agentRolePresetResource) Delete(ctx context.Context, req resource.Delet
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	res, err := catalog.Apply(ctx, r.client, presetFile(map[string]any{"name": state.Name.ValueString(), "active": false}), false, nil)
+	r.deactivate(ctx, &state, &diagAdder{&resp.Diagnostics})
+}
+
+// deactivate is the delete: an apply of active: false, and where it came from is worth recording
+// too.
+func (r *agentRolePresetResource) deactivate(ctx context.Context, m *presetModel, d *diagAdder) bool {
+	res, err := applySpec(ctx, r.client, presetFile(map[string]any{"name": m.Name.ValueString(), "active": false}), false,
+		sourceFor(r.source, m.Source))
 	if err != nil {
-		resp.Diagnostics.AddError("ReARM apply failed", err.Error())
-		return
+		d.err("ReARM apply failed", err.Error())
+		return false
 	}
-	reportChanges(res, &diagAdder{&resp.Diagnostics}, "preset")
+	return reportChanges(res, d, "preset")
 }
 
 func (r *agentRolePresetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
