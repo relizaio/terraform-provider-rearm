@@ -54,6 +54,7 @@ type boardSettingsModel struct {
 	NoProgressRepeatsToStop types.Int64 `tfsdk:"no_progress_repeats_to_stop"`
 	BlockingPriority        types.Int64 `tfsdk:"blocking_priority"`
 	CompletionPriority      types.Int64 `tfsdk:"completion_priority"`
+	HumanQueueAgeMinutes    types.Int64 `tfsdk:"human_queue_age_minutes"`
 }
 
 func NewAgentBoardResource() resource.Resource { return &agentBoardResource{} }
@@ -109,6 +110,7 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"no_progress_repeats_to_stop": schema.Int64Attribute{Optional: true},
 					"blocking_priority":           schema.Int64Attribute{Optional: true, Description: "Findings at or above this priority send work back."},
 					"completion_priority":         schema.Int64Attribute{Optional: true, Description: "Findings at or above this priority stop completion."},
+					"human_queue_age_minutes":     schema.Int64Attribute{Optional: true, Description: "Minutes a task may wait on a person before the board sends AGENT_TASK_QUEUE_AGE; 0 is off."},
 				},
 			},
 			"roles": schema.ListNestedAttribute{
@@ -167,6 +169,7 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 		putInt(st, "noProgressRepeatsToStop", m.Settings.NoProgressRepeatsToStop)
 		putInt(st, "blockingPriority", m.Settings.BlockingPriority)
 		putInt(st, "completionPriority", m.Settings.CompletionPriority)
+		putInt(st, "humanQueueAgeMinutes", m.Settings.HumanQueueAgeMinutes)
 		s["settings"] = st
 	}
 	if m.Roles != nil {
@@ -241,6 +244,7 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 			m.Settings = &boardSettingsModel{
 				BudgetMicros: types.Int64Null(), SoftAlertPercent: types.Int64Null(), CycleCap: types.Int64Null(),
 				NoProgressRepeatsToStop: types.Int64Null(), BlockingPriority: types.Int64Null(), CompletionPriority: types.Int64Null(),
+				HumanQueueAgeMinutes: types.Int64Null(),
 			}
 		}
 		readInt(&m.Settings.BudgetMicros, st, "budgetMicros", full)
@@ -249,6 +253,7 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		readInt(&m.Settings.NoProgressRepeatsToStop, st, "noProgressRepeatsToStop", full)
 		readInt(&m.Settings.BlockingPriority, st, "blockingPriority", full)
 		readInt(&m.Settings.CompletionPriority, st, "completionPriority", full)
+		readInt(&m.Settings.HumanQueueAgeMinutes, st, "humanQueueAgeMinutes", full)
 	}
 	if !full && m.Roles == nil {
 		return
