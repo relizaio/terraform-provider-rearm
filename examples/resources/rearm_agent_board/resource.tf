@@ -11,6 +11,10 @@ resource "rearm_agent_board" "platform" {
 
   documents_repo = "https://github.com/acme/platform-docs"
 
+  # Perspectives the board hangs off; the target must be a member of each. product: marks a PRODUCT
+  # component used as a perspective.
+  perspectives = ["platform", "product:checkout"]
+
   coordinator_capabilities = ["PR_MERGE"] # the coordinator merges once the last required role has passed
 
   document_paths = {
