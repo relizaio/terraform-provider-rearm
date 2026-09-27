@@ -317,3 +317,34 @@ func TestTheExampleUsesKey(t *testing.T) {
 		t.Error("the example should write its path templates with {key}")
 	}
 }
+
+// Board perspectives (task b9115d09): sent as configured, read back only when managed.
+func TestPerspectivesUnsetEmptyAndSet(t *testing.T) {
+	m := boardModel()
+	if _, ok := m.toSpec().Spec["perspectives"]; ok {
+		t.Error("unset is not managed, so nothing is sent")
+	}
+	m.Perspectives = []types.String{}
+	if ps, ok := m.toSpec().Spec["perspectives"].([]any); !ok || len(ps) != 0 {
+		t.Error("[] is sent as an empty list, which clears them")
+	}
+	m.Perspectives = []types.String{types.StringValue("payments"), types.StringValue("product:checkout")}
+	if ps := m.toSpec().Spec["perspectives"].([]any); len(ps) != 2 || ps[1] != "product:checkout" {
+		t.Errorf("set is sent as given, the marker kept: %v", ps)
+	}
+
+	withPs := exported()
+	withPs["perspectives"] = []any{"payments", "product:checkout"}
+	unmanaged := boardModel()
+	unmanaged.ID = types.StringValue("platform")
+	unmanaged.fromExport(withPs, false)
+	if unmanaged.Perspectives != nil {
+		t.Error("unset stays unset whatever the server holds")
+	}
+	imported := boardModel()
+	imported.ID = types.StringValue("platform")
+	imported.fromExport(withPs, true)
+	if len(imported.Perspectives) != 2 || imported.Perspectives[1].ValueString() != "product:checkout" {
+		t.Errorf("an import reads them all: %v", imported.Perspectives)
+	}
+}
