@@ -40,6 +40,14 @@ resource "rearm_agent_board" "platform" {
     completion_priority = 1
   }
 
+  # Task groups, in display order: a group waits for the ones it depends on. A group dropped from
+  # this list is closed, never deleted (the plan warns which); [] deletes them all while none holds
+  # tasks. Leave groups unset to manage the board without its groups.
+  groups = [
+    { key = "core-work", name = "Core services" },
+    { key = "ui-work", name = "Front end", depends_on = ["core-work"], default_level = 2 },
+  ]
+
   # The role list: a role not listed here is deactivated, never deleted.
   # Leave roles unset to manage the board without its roles.
   roles = [
