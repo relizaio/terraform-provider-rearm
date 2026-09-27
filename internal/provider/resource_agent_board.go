@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -45,6 +46,9 @@ type agentBoardModel struct {
 	CoordinatorPrompt      types.String            `tfsdk:"coordinator_prompt"`
 	CoordinatorCaps        []types.String          `tfsdk:"coordinator_capabilities"`
 	Perspectives           []types.String          `tfsdk:"perspectives"`
+	TaskPrefix             types.String            `tfsdk:"task_prefix"`
+	Documents              *boardDocumentsModel    `tfsdk:"documents"`
+	DocumentsRoot          types.String            `tfsdk:"documents_root"`
 	Settings               *boardSettingsModel     `tfsdk:"settings"`
 	Roles                  []roleModel             `tfsdk:"roles"`
 	Source                 *sourceModel            `tfsdk:"provenance"`
@@ -58,6 +62,14 @@ type boardSettingsModel struct {
 	BlockingPriority        types.Int64 `tfsdk:"blocking_priority"`
 	CompletionPriority      types.Int64 `tfsdk:"completion_priority"`
 	HumanQueueAgeMinutes    types.Int64 `tfsdk:"human_queue_age_minutes"`
+}
+
+// boardDocumentsModel is how the board names and places its documents (board-documents.md D2, D6):
+// each member set here is managed, each left unset keeps what ReARM has.
+type boardDocumentsModel struct {
+	Prefix types.String `tfsdk:"prefix"`
+	Shared types.Bool   `tfsdk:"shared"`
+	Root   types.String `tfsdk:"root"`
 }
 
 func NewAgentBoardResource() resource.Resource { return &agentBoardResource{} }
@@ -76,6 +88,33 @@ func (r *agentBoardResource) ModifyPlan(ctx context.Context, req resource.Modify
 	if w := taskPlaceholderWarning(paths); w != "" {
 		resp.Diagnostics.AddAttributeWarning(path.Root("document_paths"), "{task} is read as {key}", w)
 	}
+	keepDocumentsRoot(ctx, req, resp)
+}
+
+// keepDocumentsRoot plans the resolved root as it stands when neither the documents block nor the
+// name changes, so an unrelated change does not show it as known after apply.
+func keepDocumentsRoot(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	var planDocs, stateDocs *boardDocumentsModel
+	var planName, stateName, root types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("documents"), &planDocs)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("documents"), &stateDocs)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("name"), &planName)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("name"), &stateName)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("documents_root"), &root)...)
+	if resp.Diagnostics.HasError() || !planName.Equal(stateName) || !sameDocuments(planDocs, stateDocs) {
+		return
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("documents_root"), root)...)
+}
+
+func sameDocuments(a, b *boardDocumentsModel) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Prefix.Equal(b.Prefix) && a.Shared.Equal(b.Shared) && a.Root.Equal(b.Root)
 }
 
 // keyTemplate is a path template as the server stores it: {task} was dropped for {key}, the task's key.
@@ -139,6 +178,29 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"board already holds one of them. Each entry stays as written while it names what the board holds. " +
 					"The target must be a member of each, and adding or removing one needs BOARD_WRITE and " +
 					"CONFIGURATION_WRITE covering it. Unset is not managed; [] is none."},
+			"task_prefix": schema.StringAttribute{Optional: true, Computed: true,
+				Description: "The task-key prefix, 2 to 8 letters and digits (RD makes keys RD-1, RD-2...). Unset, ReARM " +
+					"derives one from the name and it is read back. A change is a rename, applied in place: existing " +
+					"keys stay and still resolve, and a prefix once used is never reused in the organization, so " +
+					"one another board holds is refused.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+			"documents": schema.SingleNestedAttribute{
+				Optional: true,
+				Description: "How the board names and places its documents. Only the members set here are managed; " +
+					"one left unset keeps what ReARM has.",
+				Attributes: map[string]schema.Attribute{
+					"prefix": schema.StringAttribute{Optional: true,
+						Description: "Replaces the board name in its document components' names, <prefix>-<specification>."},
+					"shared": schema.BoolAttribute{Optional: true,
+						Description: "The documents repository serves several boards: the default root becomes boards/{board}/."},
+					"root": schema.StringAttribute{Optional: true,
+						Description: "The root outright, relative to the repository, with no '..'; \"\" is the repository " +
+							"root, which is not the same as leaving it unset on a shared repository."},
+				},
+			},
+			"documents_root": schema.StringAttribute{Computed: true,
+				Description: "Where the board's documents sit in the documents repository, as ReARM resolves it from " +
+					"the documents block and the name; empty is the repository root."},
 			"settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Budget and stops. Only the settings set here are managed.",
@@ -179,6 +241,16 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 	putInt(s, "defaultTaskLevel", m.DefaultTaskLevel)
 	putString(s, "defaultInputResolution", m.DefaultInputResolution)
 	putString(s, "coordinatorPrompt", m.CoordinatorPrompt)
+	putString(s, "taskPrefix", m.TaskPrefix)
+	if m.Documents != nil {
+		d := map[string]any{}
+		putString(d, "prefix", m.Documents.Prefix)
+		if !m.Documents.Shared.IsNull() && !m.Documents.Shared.IsUnknown() {
+			d["shared"] = m.Documents.Shared.ValueBool()
+		}
+		putString(d, "root", m.Documents.Root) // "" is sent: it is the repository root, not unset
+		s["documents"] = d
+	}
 	if m.Sources != nil {
 		src := []any{}
 		for _, v := range m.Sources {
@@ -299,6 +371,15 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 			m.DocumentPaths = nil
 		}
 	}
+	// Always read: unset, the server derived it; set, the configured spelling stands for the same prefix.
+	var prefix *string
+	if v := str(spec["taskPrefix"]); v != "" {
+		prefix = &v
+	}
+	m.TaskPrefix = keepEquivalent(m.TaskPrefix, prefix, func(a, b string) bool {
+		return strings.EqualFold(strings.TrimSpace(a), b)
+	})
+	m.readDocuments(spec, full)
 	st, _ := spec["settings"].(map[string]any)
 	if m.Settings != nil || (full && anyNonNull(st)) {
 		if m.Settings == nil {
@@ -352,6 +433,92 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		roles = append(roles, r)
 	}
 	m.Roles = roles
+}
+
+// readDocuments reads the documents block: every member on an import, otherwise the members the
+// configuration sets, each keeping its configured spelling when ReARM stored the same value. A member
+// left unset stays unset whatever the server holds, so a default root reported back is no difference.
+// documents_root is always read.
+func (m *agentBoardModel) readDocuments(spec map[string]any, full bool) {
+	docs, _ := spec["documents"].(map[string]any)
+	m.DocumentsRoot = types.StringValue(resolvedDocumentsRoot(str(spec["name"]), docs))
+	if full {
+		m.Documents = nil
+		if anyNonNull(docs) {
+			m.Documents = &boardDocumentsModel{Prefix: strOrNullAny(docs["prefix"]), Shared: boolOrNullAny(docs["shared"]),
+				Root: strOrNullAny(docs["root"])}
+		}
+		return
+	}
+	if m.Documents == nil {
+		return
+	}
+	d := m.Documents
+	if !d.Prefix.IsNull() {
+		d.Prefix = keepSame(d.Prefix, strOrNullAny(docs["prefix"]), func(a string) string { return strings.TrimSpace(a) })
+	}
+	if !d.Shared.IsNull() {
+		d.Shared = boolOrNullAny(docs["shared"])
+	}
+	if !d.Root.IsNull() {
+		d.Root = keepSame(d.Root, strOrNullAny(docs["root"]), documentsRootAsStored)
+	}
+}
+
+// keepSame is the server's value, or the configured one when ReARM stores it as that value.
+func keepSame(configured, server types.String, stored func(string) string) types.String {
+	if !server.IsNull() && !configured.IsNull() && !configured.IsUnknown() &&
+		stored(configured.ValueString()) == server.ValueString() {
+		return configured
+	}
+	return server
+}
+
+// documentsRootAsStored is a root as ReARM stores it: trimmed, leading slashes dropped.
+func documentsRootAsStored(root string) string { return strings.TrimLeft(strings.TrimSpace(root), "/") }
+
+// resolvedDocumentsRoot is ReARM's rule for a board's documents root (AgentBoardData.documentsRoot):
+// the root set, else boards/{board}/ on a shared repository, else the repository root; {board} is
+// the board name slugged as boardSlug does, and a root that is not empty ends in a slash.
+func resolvedDocumentsRoot(board string, docs map[string]any) string {
+	root := ""
+	if r, ok := docs["root"].(string); ok {
+		root = r
+	} else if shared, _ := docs["shared"].(bool); shared {
+		root = "boards/{board}/"
+	}
+	root = strings.TrimLeft(strings.ReplaceAll(root, "{board}", boardSlug(board)), "/")
+	if root != "" && !strings.HasSuffix(root, "/") {
+		root += "/"
+	}
+	return root
+}
+
+// boardSlug is a board name as ReARM slugs it for its documents (AgentBoardData.slug): lower case,
+// then each run of anything but a-z and 0-9 one hyphen, none at either end. An accented letter is a
+// separator, not a plain letter: "Café" is "caf" (tests/fceb1e57/run-1.md T-4).
+//
+// Lower case is Java's toLowerCase(Locale.ROOT). Go's per-rune ToLower agrees except for U+0130
+// (capital I with dot), which Java lowers to "i" plus a combining dot, so a hyphen follows the i.
+func boardSlug(name string) string {
+	lower := strings.ToLower(strings.ReplaceAll(name, "\u0130", "i\u0307"))
+	return strings.Trim(nonSlug.ReplaceAllString(lower, "-"), "-")
+}
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+func strOrNullAny(v any) types.String {
+	if s, ok := v.(string); ok {
+		return types.StringValue(s)
+	}
+	return types.StringNull()
+}
+
+func boolOrNullAny(v any) types.Bool {
+	if b, ok := v.(bool); ok {
+		return types.BoolValue(b)
+	}
+	return types.BoolNull()
 }
 
 func emptyRole() roleModel {
