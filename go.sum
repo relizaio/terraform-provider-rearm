@@ -74,8 +74,8 @@ github.com/oklog/run v1.1.0/go.mod h1:sVPdnTZT1zYwAJeCMu2Th4T21pA3FPOQRfWjQlk7DV
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/relizaio/rearm-client-go v0.1.7-0.20260927084454-b8d441f960e2 h1:XNh5VgO0kxw4w+MIqXr/Y0cxNVm4KmM8mx5zyYdXEoY=
-github.com/relizaio/rearm-client-go v0.1.7-0.20260927084454-b8d441f960e2/go.mod h1:ahP0z6vzkEo3dTG6Rsz0TXPe1/CI/H5UEoC/Dfky/AY=
+github.com/relizaio/rearm-client-go v0.1.7-0.20260927101028-22a3220df356 h1:JbnbLb592AlW1+3vhnsY++m2sqmA3eLhZcspdHG9w/4=
+github.com/relizaio/rearm-client-go v0.1.7-0.20260927101028-22a3220df356/go.mod h1:ahP0z6vzkEo3dTG6Rsz0TXPe1/CI/H5UEoC/Dfky/AY=
 github.com/sergi/go-diff v1.3.1 h1:xkr+Oxo4BOQKmkn/B9eMK0g5Kg/983T9DqqPHwYqD+8=
 github.com/sergi/go-diff v1.3.1/go.mod h1:aMJSSKb2lpPvRNec0+w3fl7LP9IOFzdc9Pa4NFbPK1I=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
