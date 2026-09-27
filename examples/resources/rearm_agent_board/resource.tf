@@ -11,6 +11,17 @@ resource "rearm_agent_board" "platform" {
 
   documents_repo = "https://github.com/acme/platform-docs"
 
+  # Task keys: PL-1, PL-2... Unset, ReARM derives a prefix from the name. A change is a rename in
+  # place: existing keys stay, and a prefix once used is never reused in the organization.
+  task_prefix = "PL"
+
+  # The docs repository serves several boards, so this one's documents go under boards/platform/.
+  # root = "" would put them at the repository root instead.
+  documents = {
+    prefix = "platform"
+    shared = true
+  }
+
   # Perspectives the board hangs off; the target must be a member of each. product: marks a PRODUCT
   # component used as a perspective.
   perspectives = ["platform", "product:checkout"]
