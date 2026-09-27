@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -102,9 +103,11 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"the last required role has passed, CODE_PUSH on a docs-only board. The tracker verbs are always " +
 					"the coordinator's and are refused here. Unset is not managed; [] is none."},
 			"perspectives": schema.ListAttribute{Optional: true, ElementType: types.StringType,
-				Description: "Perspectives the board hangs off, by name; product:<name> marks a PRODUCT component " +
-					"used as a perspective. The target must be a member of each, and adding or removing one needs " +
-					"BOARD_WRITE and CONFIGURATION_WRITE covering it. Unset is not managed; [] is none."},
+				Description: "Perspectives the board hangs off, by name or uuid; product:<name or uuid> marks a PRODUCT " +
+					"component used as a perspective. A name several perspectives share needs the uuid, unless the " +
+					"board already holds one of them. Each entry stays as written while it names what the board holds. " +
+					"The target must be a member of each, and adding or removing one needs BOARD_WRITE and " +
+					"CONFIGURATION_WRITE covering it. Unset is not managed; [] is none."},
 			"settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Budget and stops. Only the settings set here are managed.",
@@ -352,8 +355,71 @@ func (r *agentBoardResource) read(ctx context.Context, m *agentBoardModel, full 
 		d.err("ReARM export failed", err.Error())
 		return false
 	}
+	configured := m.Perspectives
 	m.fromExport(f.Spec, full)
+	if len(configured) > 0 && len(m.Perspectives) > 0 {
+		// The export writes a shared name as its uuid and a unique one as its name, whichever the
+		// configuration used; keep the configured form of each perspective the board holds, so the
+		// state after an apply is the plan. An older server without the read keeps the export's form.
+		if held, err := heldPerspectives(ctx, r.client, m.Name.ValueString()); err == nil {
+			m.Perspectives = keepConfigured(configured, m.Perspectives, held)
+		}
+	}
 	return true
+}
+
+// heldPerspective is a perspective a board holds, as the server reports it.
+type heldPerspective struct {
+	uuid, name string
+	product    bool
+}
+
+func heldPerspectives(ctx context.Context, c *rearm.Client, board string) ([]heldPerspective, error) {
+	resp, err := rearm.ExportBoardPerspectives(ctx, c, board)
+	if err != nil {
+		return nil, err
+	}
+	out := []heldPerspective{}
+	for _, p := range resp.ExportBoardPerspectivesProgrammatic {
+		out = append(out, heldPerspective{uuid: p.Uuid, name: p.Name, product: p.Product})
+	}
+	return out, nil
+}
+
+const productMarker = "product:"
+
+// namesPerspective reports whether a board file entry names p the way the server resolves it: its
+// uuid in any case, or its exact name, with the product: marker exactly when p is a product.
+func namesPerspective(entry string, p heldPerspective) bool {
+	ref := strings.TrimSpace(entry)
+	product := len(ref) >= len(productMarker) && strings.EqualFold(ref[:len(productMarker)], productMarker)
+	if product {
+		ref = strings.TrimSpace(ref[len(productMarker):])
+	}
+	return product == p.product && (strings.EqualFold(ref, p.uuid) || ref == p.name)
+}
+
+// keepConfigured gives each exported entry the configured entry that names the same perspective, so
+// a uuid the export writes as a name, or a name it writes as a uuid, reads back as configured. An
+// entry the configuration does not name keeps the export's form, so a real difference still shows.
+func keepConfigured(configured, exported []types.String, held []heldPerspective) []types.String {
+	out := make([]types.String, len(exported))
+	for i, e := range exported {
+		out[i] = e
+		for _, p := range held {
+			if !namesPerspective(e.ValueString(), p) {
+				continue
+			}
+			for _, c := range configured {
+				if !c.IsNull() && !c.IsUnknown() && namesPerspective(c.ValueString(), p) {
+					out[i] = c
+					break
+				}
+			}
+			break
+		}
+	}
+	return out
 }
 
 // reportChanges turns ERROR entries into diagnostics and warnings into Terraform warnings.
