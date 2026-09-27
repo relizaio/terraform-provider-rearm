@@ -212,13 +212,23 @@ func TestTheResolvedRootFollowsReARMsRule(t *testing.T) {
 		want string
 	}{
 		{nil, ""},
-		{map[string]any{"shared": true}, "boards/cafe-creme-2/"},
+		{map[string]any{"shared": true}, "boards/caf-cr-me-2/"},
 		{map[string]any{"shared": true, "root": ""}, ""},
 		{map[string]any{"shared": false, "root": "/mine"}, "mine/"},
-		{map[string]any{"root": "team/{board}/"}, "team/cafe-creme-2/"},
+		{map[string]any{"root": "team/{board}/"}, "team/caf-cr-me-2/"},
 	} {
 		if got := resolvedDocumentsRoot("Café Crème 2", c.docs); got != c.want {
 			t.Errorf("%v: got %q, want %q", c.docs, got, c.want)
+		}
+	}
+	// The tester's board (tests/fceb1e57/run-1.md T-4): the server's documentsRoot, byte for byte.
+	if got := resolvedDocumentsRoot("Tf Ünïcödé Straße Øre mujm01q1", map[string]any{"shared": true}); got != "boards/tf-n-c-d-stra-e-re-mujm01q1/" {
+		t.Errorf("an accented name: got %q", got)
+	}
+	for name, want := range map[string]string{"ReARM Dogfood": "rearm-dogfood", "  --Payments!! ": "payments",
+		"a__//b": "a-b", "日本": "", "İstanbul": "i-stanbul", "KELVIN \u212A": "kelvin-k"} {
+		if got := boardSlug(name); got != want {
+			t.Errorf("boardSlug(%q) = %q, want %q", name, got, want)
 		}
 	}
 }

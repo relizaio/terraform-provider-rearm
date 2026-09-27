@@ -6,9 +6,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode"
-
-	"golang.org/x/text/unicode/norm"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -482,7 +479,7 @@ func documentsRootAsStored(root string) string { return strings.TrimLeft(strings
 
 // resolvedDocumentsRoot is ReARM's rule for a board's documents root (AgentBoardData.documentsRoot):
 // the root set, else boards/{board}/ on a shared repository, else the repository root; {board} is
-// the board name slugged, and a root that is not empty ends in a slash.
+// the board name slugged as boardSlug does, and a root that is not empty ends in a slash.
 func resolvedDocumentsRoot(board string, docs map[string]any) string {
 	root := ""
 	if r, ok := docs["root"].(string); ok {
@@ -490,23 +487,22 @@ func resolvedDocumentsRoot(board string, docs map[string]any) string {
 	} else if shared, _ := docs["shared"].(bool); shared {
 		root = "boards/{board}/"
 	}
-	root = strings.TrimLeft(strings.ReplaceAll(root, "{board}", slug(board)), "/")
+	root = strings.TrimLeft(strings.ReplaceAll(root, "{board}", boardSlug(board)), "/")
 	if root != "" && !strings.HasSuffix(root, "/") {
 		root += "/"
 	}
 	return root
 }
 
-// slug is a name as ReARM slugs it: accents dropped, lower case, any other run one hyphen, trimmed.
-func slug(name string) string {
-	var b strings.Builder
-	for _, r := range norm.NFD.String(name) {
-		if unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) || unicode.Is(unicode.Mc, r) {
-			continue
-		}
-		b.WriteRune(unicode.ToLower(r))
-	}
-	return strings.Trim(nonSlug.ReplaceAllString(b.String(), "-"), "-")
+// boardSlug is a board name as ReARM slugs it for its documents (AgentBoardData.slug): lower case,
+// then each run of anything but a-z and 0-9 one hyphen, none at either end. An accented letter is a
+// separator, not a plain letter: "Café" is "caf" (tests/fceb1e57/run-1.md T-4).
+//
+// Lower case is Java's toLowerCase(Locale.ROOT). Go's per-rune ToLower agrees except for U+0130
+// (capital I with dot), which Java lowers to "i" plus a combining dot, so a hyphen follows the i.
+func boardSlug(name string) string {
+	lower := strings.ToLower(strings.ReplaceAll(name, "\u0130", "i\u0307"))
+	return strings.Trim(nonSlug.ReplaceAllString(lower, "-"), "-")
 }
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
