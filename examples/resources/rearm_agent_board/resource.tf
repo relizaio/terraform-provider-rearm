@@ -18,7 +18,8 @@ resource "rearm_agent_board" "platform" {
   coordinator_capabilities = ["PR_MERGE"] # the coordinator merges once the last required role has passed
 
   document_paths = {
-    ARCHITECTURE = "docs/design/{task}.md"
+    # {key} is the task's key (RD-42); {round}, {type} and {component} are the others.
+    ARCHITECTURE = "docs/design/{key}/architecture-{round}.md"
   }
 
   settings = {

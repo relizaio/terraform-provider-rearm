@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -63,9 +64,37 @@ func NewAgentBoardResource() resource.Resource { return &agentBoardResource{} }
 
 var _ resource.ResourceWithModifyPlan = &agentBoardResource{}
 
-// ModifyPlan warns when the only change is to the provenance block, which ReARM does not record.
-func (r *agentBoardResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+// ModifyPlan warns when the only change is to the provenance block, which ReARM does not record,
+// and when a path template still says {task}.
+func (r *agentBoardResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	warnIfProvenanceOnly(req, resp)
+	var paths map[string]types.String
+	if req.Config.Raw.IsNull() {
+		return
+	}
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("document_paths"), &paths)...)
+	if w := taskPlaceholderWarning(paths); w != "" {
+		resp.Diagnostics.AddAttributeWarning(path.Root("document_paths"), "{task} is read as {key}", w)
+	}
+}
+
+// keyTemplate is a path template as the server stores it: {task} was dropped for {key}, the task's key.
+func keyTemplate(t string) string { return strings.ReplaceAll(t, "{task}", "{key}") }
+
+// taskPlaceholderWarning names the templates that still say {task}, or is empty.
+func taskPlaceholderWarning(paths map[string]types.String) string {
+	var specs []string
+	for k, v := range paths {
+		if !v.IsNull() && !v.IsUnknown() && strings.Contains(v.ValueString(), "{task}") {
+			specs = append(specs, k)
+		}
+	}
+	if len(specs) == 0 {
+		return ""
+	}
+	sort.Strings(specs)
+	return "document_paths " + strings.Join(specs, ", ") + " use {task}, which ReARM reads as {key} (the task's key, " +
+		"e.g. RD-42). Nothing changes on the board; write {key} to silence this."
 }
 
 func (r *agentBoardResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -91,7 +120,9 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "Wired trackers, e.g. github:acme/platform."},
 			"documents_repo": schema.StringAttribute{Optional: true, Description: "Repository the board's documents go to; must be among the sources when there are any."},
 			"document_paths": schema.MapAttribute{Optional: true, ElementType: types.StringType,
-				Description: "Path templates per specification type, e.g. ARCHITECTURE = \"docs/design/{task}.md\"."},
+				Description: "Path templates per specification type, e.g. ARCHITECTURE = \"docs/design/{key}/architecture-{round}.md\". " +
+					"Placeholders: {key} (the task's key, e.g. RD-42), {round}, {type}, {component}. {task} is read as {key}: " +
+					"it plans without a difference, and a warning asks for {key}."},
 			"priority_type":            schema.StringAttribute{Optional: true, Description: "LAX or STRICT."},
 			"per_agent_wip_limit":      schema.Int64Attribute{Optional: true},
 			"default_task_level":       schema.Int64Attribute{Optional: true},
@@ -172,7 +203,7 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 	if m.DocumentPaths != nil {
 		p := map[string]any{}
 		for k, v := range m.DocumentPaths {
-			p[k] = v.ValueString()
+			p[k] = keyTemplate(v.ValueString())
 		}
 		s["documentPaths"] = p
 	}
@@ -256,9 +287,13 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 	}
 	if full || m.DocumentPaths != nil {
 		paths, _ := spec["documentPaths"].(map[string]any)
+		configured := m.DocumentPaths
 		m.DocumentPaths = map[string]types.String{}
 		for k, v := range paths {
-			m.DocumentPaths[k] = types.StringValue(str(v))
+			// The server stores {task} as {key}; a configuration still written with {task} keeps
+			// its spelling when that is all that differs, so the state after an apply is the plan.
+			server := str(v)
+			m.DocumentPaths[k] = keepEquivalent(configured[k], &server, func(a, b string) bool { return keyTemplate(a) == b })
 		}
 		if full && len(m.DocumentPaths) == 0 {
 			m.DocumentPaths = nil

@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -257,6 +259,62 @@ func TestBlindReviewUnsetSetAndRead(t *testing.T) {
 	roleFromExport(&managed, map[string]any{"name": "reviewer", "blindReview": true}, false)
 	if !managed.BlindReview.ValueBool() {
 		t.Error("a managed blind_review follows the server")
+	}
+}
+
+// T-1 (tests/0cc38817/run-1.md): ReARM stores a {task} template as {key}. A configuration still
+// written with {task} is sent as {key}, reads back as written while that is all that differs, and
+// is warned about; a real change on the server still shows.
+func TestATaskPlaceholderIsSentAsKeyAndKeepsItsSpelling(t *testing.T) {
+	m := boardModel()
+	m.DocumentPaths = map[string]types.String{
+		"ARCHITECTURE":    types.StringValue("docs/design/{task}.md"),
+		"DETAILED_DESIGN": types.StringValue("impl/{key}/notes-{round}.md"),
+	}
+	sent := m.toSpec().Spec["documentPaths"].(map[string]any)
+	if sent["ARCHITECTURE"] != "docs/design/{key}.md" || sent["DETAILED_DESIGN"] != "impl/{key}/notes-{round}.md" {
+		t.Errorf("sent %v", sent)
+	}
+
+	server := exported()
+	server["documentPaths"] = map[string]any{"ARCHITECTURE": "docs/design/{key}.md", "DETAILED_DESIGN": "impl/{key}/notes-{round}.md"}
+	m.ID = types.StringValue("platform")
+	m.fromExport(server, false)
+	if got := m.DocumentPaths["ARCHITECTURE"].ValueString(); got != "docs/design/{task}.md" {
+		t.Errorf("the configured {task} spelling should stand, got %q", got)
+	}
+
+	server["documentPaths"] = map[string]any{"ARCHITECTURE": "docs/other/{key}.md", "DETAILED_DESIGN": "impl/{key}/notes-{round}.md"}
+	m.fromExport(server, false)
+	if got := m.DocumentPaths["ARCHITECTURE"].ValueString(); got != "docs/other/{key}.md" {
+		t.Errorf("a change made on the server must show, got %q", got)
+	}
+
+	imported := boardModel()
+	imported.ID = types.StringValue("platform")
+	imported.fromExport(server, true)
+	if got := imported.DocumentPaths["ARCHITECTURE"].ValueString(); got != "docs/other/{key}.md" {
+		t.Errorf("an import takes the server's form, got %q", got)
+	}
+
+	w := taskPlaceholderWarning(map[string]types.String{"ARCHITECTURE": types.StringValue("docs/design/{task}.md"),
+		"QUESTIONS": types.StringValue("q/{task}.md"), "DETAILED_DESIGN": types.StringValue("impl/{key}.md")})
+	if !strings.Contains(w, "ARCHITECTURE, QUESTIONS use {task}") {
+		t.Errorf("warning %q", w)
+	}
+	if taskPlaceholderWarning(map[string]types.String{"ARCHITECTURE": types.StringValue("docs/{key}.md")}) != "" {
+		t.Error("no warning without {task}")
+	}
+}
+
+// The example in examples/resources/rearm_agent_board says {key}, not {task}.
+func TestTheExampleUsesKey(t *testing.T) {
+	b, err := os.ReadFile("../../examples/resources/rearm_agent_board/resource.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "{task}") || !strings.Contains(string(b), "{key}") {
+		t.Error("the example should write its path templates with {key}")
 	}
 }
 
