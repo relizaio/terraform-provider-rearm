@@ -50,6 +50,7 @@ type agentBoardModel struct {
 	Documents              *boardDocumentsModel    `tfsdk:"documents"`
 	DocumentsRoot          types.String            `tfsdk:"documents_root"`
 	Settings               *boardSettingsModel     `tfsdk:"settings"`
+	Groups                 []groupModel            `tfsdk:"groups"`
 	Roles                  []roleModel             `tfsdk:"roles"`
 	Source                 *sourceModel            `tfsdk:"provenance"`
 }
@@ -89,6 +90,7 @@ func (r *agentBoardResource) ModifyPlan(ctx context.Context, req resource.Modify
 		resp.Diagnostics.AddAttributeWarning(path.Root("document_paths"), "{task} is read as {key}", w)
 	}
 	keepDocumentsRoot(ctx, req, resp)
+	warnGroupChanges(ctx, req, resp)
 }
 
 // keepDocumentsRoot plans the resolved root as it stands when neither the documents block nor the
@@ -214,6 +216,7 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"human_queue_age_minutes":     schema.Int64Attribute{Optional: true, Description: "Minutes a task may wait on a person before the board sends AGENT_TASK_QUEUE_AGE; 0 is off."},
 				},
 			},
+			"groups": groupsAttribute(),
 			"roles": schema.ListNestedAttribute{
 				Optional: true,
 				Description: "The board's roles, in order. Set, it is the role list: a role not in it is deactivated, " +
@@ -289,6 +292,9 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 		putInt(st, "completionPriority", m.Settings.CompletionPriority)
 		putInt(st, "humanQueueAgeMinutes", m.Settings.HumanQueueAgeMinutes)
 		s["settings"] = st
+	}
+	if m.Groups != nil {
+		s["groups"] = groupsToSpec(m.Groups)
 	}
 	if m.Roles != nil {
 		roles := []any{}
@@ -396,6 +402,12 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		readInt(&m.Settings.BlockingPriority, st, "blockingPriority", full)
 		readInt(&m.Settings.CompletionPriority, st, "completionPriority", full)
 		readInt(&m.Settings.HumanQueueAgeMinutes, st, "humanQueueAgeMinutes", full)
+	}
+	if full || m.Groups != nil {
+		m.Groups = groupsFromExport(m.Groups, list(spec["groups"]), full)
+		if full && len(m.Groups) == 0 {
+			m.Groups = nil
+		}
 	}
 	if !full && m.Roles == nil {
 		return
