@@ -63,6 +63,39 @@ type boardSettingsModel struct {
 	BlockingPriority        types.Int64 `tfsdk:"blocking_priority"`
 	CompletionPriority      types.Int64 `tfsdk:"completion_priority"`
 	HumanQueueAgeMinutes    types.Int64 `tfsdk:"human_queue_age_minutes"`
+	Staleness               *boardStalenessModel `tfsdk:"staleness"`
+}
+
+// boardStalenessModel is when the board ALERTs that work went stale (task RD3-4), minutes each, null
+// off. Set, it is the whole block: a threshold left out is off on the board.
+type boardStalenessModel struct {
+	RoleUnstaffedMinutes types.Int64 `tfsdk:"role_unstaffed_minutes"`
+	HopNoProgressMinutes types.Int64 `tfsdk:"hop_no_progress_minutes"`
+	DeliveryStuckMinutes types.Int64 `tfsdk:"delivery_stuck_minutes"`
+	SeatSilentMinutes    types.Int64 `tfsdk:"seat_silent_minutes"`
+	RepeatMinutes        types.Int64 `tfsdk:"repeat_minutes"`
+}
+
+func (s *boardStalenessModel) toSpec() map[string]any {
+	out := map[string]any{}
+	putInt(out, "roleUnstaffedMinutes", s.RoleUnstaffedMinutes)
+	putInt(out, "hopNoProgressMinutes", s.HopNoProgressMinutes)
+	putInt(out, "deliveryStuckMinutes", s.DeliveryStuckMinutes)
+	putInt(out, "seatSilentMinutes", s.SeatSilentMinutes)
+	putInt(out, "repeatMinutes", s.RepeatMinutes)
+	return out
+}
+
+// stalenessFromExport reads the block whole, because the board replaces it whole: a threshold the
+// configuration leaves out and ReARM has set is drift, not something to keep.
+func stalenessFromExport(m map[string]any) *boardStalenessModel {
+	return &boardStalenessModel{
+		RoleUnstaffedMinutes: intVal(m["roleUnstaffedMinutes"]),
+		HopNoProgressMinutes: intVal(m["hopNoProgressMinutes"]),
+		DeliveryStuckMinutes: intVal(m["deliveryStuckMinutes"]),
+		SeatSilentMinutes:    intVal(m["seatSilentMinutes"]),
+		RepeatMinutes:        intVal(m["repeatMinutes"]),
+	}
 }
 
 // boardDocumentsModel is how the board names and places its documents (board-documents.md D2, D6):
@@ -214,6 +247,18 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"blocking_priority":           schema.Int64Attribute{Optional: true, Description: "Findings at or above this priority send work back."},
 					"completion_priority":         schema.Int64Attribute{Optional: true, Description: "Findings at or above this priority stop completion."},
 					"human_queue_age_minutes":     schema.Int64Attribute{Optional: true, Description: "Minutes a task may wait on a person before the board sends AGENT_TASK_QUEUE_AGE; 0 is off."},
+					"staleness": schema.SingleNestedAttribute{
+						Optional: true,
+						Description: "When the board ALERTs that work went stale, minutes each (at least 1); a threshold left out is off. " +
+							"Only an ALERT is posted: no task changes state. Set, this is the whole block.",
+						Attributes: map[string]schema.Attribute{
+							"role_unstaffed_minutes":  schema.Int64Attribute{Optional: true, Description: "A task queued for a role this long while no session of the role polled the board."},
+							"hop_no_progress_minutes": schema.Int64Attribute{Optional: true, Description: "A task assigned this long with nothing from its holder: no document, sign-off, question or usage report."},
+							"delivery_stuck_minutes":  schema.Int64Attribute{Optional: true, Description: "A task delivering this long with a linked PR not delivered."},
+							"seat_silent_minutes":     schema.Int64Attribute{Optional: true, Description: "A task waiting on the coordinator this long while the seat is held."},
+							"repeat_minutes":          schema.Int64Attribute{Optional: true, Description: "How long a standing breach stays quiet before it is alerted again; unset is 240."},
+						},
+					},
 				},
 			},
 			"groups": groupsAttribute(),
@@ -291,6 +336,9 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 		putInt(st, "blockingPriority", m.Settings.BlockingPriority)
 		putInt(st, "completionPriority", m.Settings.CompletionPriority)
 		putInt(st, "humanQueueAgeMinutes", m.Settings.HumanQueueAgeMinutes)
+		if m.Settings.Staleness != nil {
+			st["staleness"] = m.Settings.Staleness.toSpec()
+		}
 		s["settings"] = st
 	}
 	if m.Groups != nil {
@@ -402,6 +450,10 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		readInt(&m.Settings.BlockingPriority, st, "blockingPriority", full)
 		readInt(&m.Settings.CompletionPriority, st, "completionPriority", full)
 		readInt(&m.Settings.HumanQueueAgeMinutes, st, "humanQueueAgeMinutes", full)
+		stale, _ := st["staleness"].(map[string]any)
+		if m.Settings.Staleness != nil || (full && anyNonNull(stale)) {
+			m.Settings.Staleness = stalenessFromExport(stale)
+		}
 	}
 	if full || m.Groups != nil {
 		m.Groups = groupsFromExport(m.Groups, list(spec["groups"]), full)
