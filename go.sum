@@ -76,6 +76,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/relizaio/rearm-client-go v0.1.7-0.20260928221703-c2310e75c041 h1:XhjG/bIGGL4NTkBQw1GgxEtjAWl9R/NkvuC9Ny3nJyc=
 github.com/relizaio/rearm-client-go v0.1.7-0.20260928221703-c2310e75c041/go.mod h1:ahP0z6vzkEo3dTG6Rsz0TXPe1/CI/H5UEoC/Dfky/AY=
+github.com/relizaio/rearm-client-go v0.1.7-0.20260929013300-75d426cd4852 h1:85L9AGDl9nuee3XAUsghG/WY/K8LUzJlcy+f7a1tuMM=
+github.com/relizaio/rearm-client-go v0.1.7-0.20260929013300-75d426cd4852/go.mod h1:ahP0z6vzkEo3dTG6Rsz0TXPe1/CI/H5UEoC/Dfky/AY=
 github.com/sergi/go-diff v1.3.1 h1:xkr+Oxo4BOQKmkn/B9eMK0g5Kg/983T9DqqPHwYqD+8=
 github.com/sergi/go-diff v1.3.1/go.mod h1:aMJSSKb2lpPvRNec0+w3fl7LP9IOFzdc9Pa4NFbPK1I=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -14,7 +15,10 @@ import (
 )
 
 // Ensure the provider satisfies the framework interfaces.
-var _ provider.Provider = &rearmProvider{}
+var (
+	_ provider.Provider                       = &rearmProvider{}
+	_ provider.ProviderWithEphemeralResources = &rearmProvider{}
+)
 
 type rearmProvider struct {
 	version string
@@ -93,6 +97,7 @@ func (p *rearmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	}
 	resp.DataSourceData = client
 	resp.ResourceData = &providerData{client: client, source: resolveProviderSource(cfg.Source, os.Getenv)}
+	resp.EphemeralResourceData = resp.ResourceData
 }
 
 func (p *rearmProvider) Resources(_ context.Context) []func() resource.Resource {
@@ -101,6 +106,14 @@ func (p *rearmProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewBranchResource,
 		NewAgentBoardResource,
 		NewAgentRolePresetResource,
+		NewApiKeyResource,
+	}
+}
+
+// EphemeralResources mint values that must never reach state (task RD3-11).
+func (p *rearmProvider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
+	return []func() ephemeral.EphemeralResource{
+		NewApiKeySecretEphemeral,
 	}
 }
 
