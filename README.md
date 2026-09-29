@@ -43,6 +43,11 @@ resource "rearm_branch" "platform_stable" {
 | `rearm_branch` | `component/name` | declarative Branches apply / export |
 | `rearm_agent_board` | board name | board file apply / export; delete archives |
 | `rearm_agent_role_preset` | preset name | presets file (one preset, not authoritative); delete deactivates |
+| `rearm_api_key` | declared key name | API_KEYS file (one FREEFORM key, not authoritative); delete deactivates; never a secret |
+
+| Ephemeral resource | Mints |
+|---|---|
+| `rearm_api_key_secret` | a secret in slot 1 or 2 of a key, for a consumer in the same run; nothing in state |
 
 Semantics follow the declarative model: an attribute left unset is not managed by Terraform
 and keeps its value in ReARM; the `dependency` and `dependency_pattern` blocks are owned as a
@@ -83,10 +88,27 @@ change"). Provider-level provenance, such as a new commit on every CI run, is no
 plans nothing by itself. The block is called `provenance` rather than `source` because Terraform
 reserves `source` in provider blocks.
 
+### API keys and their secrets
+
+`rearm_api_key` declares a FREEFORM key's identity and settings -- its permissions, notes, status,
+`secret_expires_days`, `session_max_minutes` -- and never holds a secret: a key it creates has none,
+and state carries only `secret_slots` metadata (slot, active, dates). FREEFORM is the only type
+declared: ORGANIZATION and ORGANIZATION_RW keys are deprecated. The provider's key needs
+CONFIGURATION_WRITE and declares only keys no stronger than itself.
+
+Secrets are minted by the `rearm_api_key_secret` ephemeral resource (Terraform and OpenTofu 1.10 and
+up) and handed to a consumer in the same run, such as a write-only attribute of a secret store; they
+never reach state or plan files. Name the key by `rearm_api_key.<name>.id`, so the mint waits until
+the key exists. An empty slot is minted once; later runs read `minted = false` with no value, since
+ReARM keeps only a hash. `rotate = true` mints a new value on every open (plan included) and the old
+one stops working, so set it for a rotation run only. A person does the same with
+`rearm apikey mint <key> --slot 1`. See `examples/resources/rearm_api_key/resource.tf`.
+
 Import: `terraform import rearm_component.api payments-api`,
 `terraform import rearm_branch.platform_stable acme-platform/stable`,
 `terraform import rearm_agent_board.platform platform`,
-`terraform import rearm_agent_role_preset.coder coder`.
+`terraform import rearm_agent_role_preset.coder coder`,
+`terraform import rearm_api_key.ci ci-release`.
 
 ## Development
 
