@@ -38,6 +38,18 @@ resource "rearm_agent_board" "platform" {
     cycle_cap           = 6
     blocking_priority   = 2
     completion_priority = 1
+
+    # The level ladder, opt-in: with it every task has a level (0 unless set), the poll offers lower levels
+    # first, and every served prompt explains the rungs. Without it levels are refused, so a group's
+    # default_level below needs it. Removing it is refused while a task or group carries a level.
+    ladder = {
+      levels = [
+        { name = "requirements", description = "what the client needs" },
+        { name = "solution", description = "the decisions that meet it" },
+        { name = "components" },
+        { name = "modules" },
+      ]
+    }
   }
 
   # Task groups, in display order: a group waits for the ones it depends on. A group dropped from
@@ -45,7 +57,7 @@ resource "rearm_agent_board" "platform" {
   # tasks. Leave groups unset to manage the board without its groups.
   groups = [
     { key = "core-work", name = "Core services" },
-    { key = "ui-work", name = "Front end", depends_on = ["core-work"], default_level = 2 },
+    { key = "ui-work", name = "Front end", depends_on = ["core-work"], default_level = 2 }, # a rung of the ladder
   ]
 
   # The role list: a role not listed here is deactivated, never deleted.
