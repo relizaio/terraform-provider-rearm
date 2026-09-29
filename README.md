@@ -57,6 +57,12 @@ managed. The board's nested attributes (`settings`, a role's `strength`, `requir
 archives it, keeping its tasks and history; destroying a preset deactivates it. A change that
 leaves tasks waiting on a deactivated role comes back as a Terraform warning.
 
+`settings.ladder` declares the board's level ladder, opt-in: its rungs in order (a name and an
+optional description), each numbered by its place from 0. With it every task has a level (0 unless
+set) and the served prompts explain the rungs; without it a level -- a group's `default_level`
+included -- is refused. It is read back whole, and removing it is refused while a task or group
+carries a level.
+
 ### Provenance
 
 Every apply tells ReARM where the configuration came from, and ReARM records it as the entity's
