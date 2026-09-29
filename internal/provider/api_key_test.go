@@ -112,7 +112,9 @@ func TestApiKeyReadsBackKeepingEquivalentSpellings(t *testing.T) {
 	if !m.Status.IsNull() || !m.SessionMaxMinutes.IsNull() {
 		t.Errorf("an unmanaged attribute stays unmanaged: %v %v", m.Status, m.SessionMaxMinutes)
 	}
-	if len(m.SecretSlots) != 1 || m.SecretSlots[0].Slot.ValueInt64() != 2 || !m.SecretSlots[0].ExpiresDate.IsNull() {
+	var slots []apiKeySecretSlot
+	m.SecretSlots.ElementsAs(context.Background(), &slots, false)
+	if len(slots) != 1 || slots[0].Slot.ValueInt64() != 2 || !slots[0].ExpiresDate.IsNull() {
 		t.Errorf("slots: %+v", m.SecretSlots)
 	}
 

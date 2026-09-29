@@ -44,7 +44,7 @@ type apiKeyModel struct {
 	Status            types.String       `tfsdk:"status"`
 	SecretExpiresDays types.Int64        `tfsdk:"secret_expires_days"`
 	SessionMaxMinutes types.Int64        `tfsdk:"session_max_minutes"`
-	SecretSlots       []apiKeySecretSlot `tfsdk:"secret_slots"`
+	SecretSlots       types.List         `tfsdk:"secret_slots"`
 	Source            *sourceModel       `tfsdk:"provenance"`
 }
 
@@ -65,7 +65,9 @@ type apiKeyObjectPermission struct {
 	Approvals types.Set    `tfsdk:"approvals"`
 }
 
-// apiKeySecretSlot is a secret's metadata: never its value.
+// apiKeySecretSlot is a secret's metadata: never its value. The attribute holds them as a types.List so a plan
+// can carry it unknown -- a new key's slots, and every update's, since a mint in the same run changes them
+// (RD3-11 run-1 T-1: a Go slice cannot hold unknown, and every create failed).
 type apiKeySecretSlot struct {
 	Slot         types.Int64  `tfsdk:"slot"`
 	Active       types.Bool   `tfsdk:"active"`
@@ -276,13 +278,20 @@ func (m *apiKeyModel) fromView(k map[string]any, full bool) {
 		p, _ := k["permissions"].(map[string]any)
 		m.Permissions = permissionsFromView(m.Permissions, p)
 	}
-	m.SecretSlots = []apiKeySecretSlot{}
+	slots := []apiKeySecretSlot{}
 	for _, s := range list(k["secretSlots"]) {
 		sm, _ := s.(map[string]any)
-		m.SecretSlots = append(m.SecretSlots, apiKeySecretSlot{Slot: intVal(sm["slot"]), Active: boolVal(sm["active"]),
+		slots = append(slots, apiKeySecretSlot{Slot: intVal(sm["slot"]), Active: boolVal(sm["active"]),
 			CreatedDate: strVal(sm["createdDate"]), ExpiresDate: strVal(sm["expiresDate"]), LastUsedDate: strVal(sm["lastUsedDate"])})
 	}
+	m.SecretSlots, _ = types.ListValueFrom(context.Background(), secretSlotType, slots)
 }
+
+// secretSlotType is one element of secret_slots.
+var secretSlotType = types.ObjectType{AttrTypes: map[string]attr.Type{
+	"slot": types.Int64Type, "active": types.BoolType, "created_date": types.StringType,
+	"expires_date": types.StringType, "last_used_date": types.StringType,
+}}
 
 // blankAsNone keeps a configured blank where ReARM stores none; otherwise ReARM's value.
 func blankAsNone(configured, read types.String) types.String {
