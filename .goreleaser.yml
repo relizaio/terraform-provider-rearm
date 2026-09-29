@@ -2,6 +2,8 @@
 version: 2
 before:
   hooks:
+    # the rearm-client-go pin is what `make pin-client-go` writes (hack/pin-client-go.sh)
+    - sh hack/pin-client-go.sh --check
     - go mod tidy
 builds:
   - env: [CGO_ENABLED=0]
