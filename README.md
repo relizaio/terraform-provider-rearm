@@ -43,7 +43,7 @@ resource "rearm_branch" "platform_stable" {
 | `rearm_branch` | `component/name` | declarative Branches apply / export |
 | `rearm_agent_board` | board name | board file apply / export; delete archives |
 | `rearm_agent_role_preset` | preset name | presets file (one preset, not authoritative); delete deactivates |
-| `rearm_api_key` | declared key name | API_KEYS file (one key, not authoritative); delete deactivates; never a secret |
+| `rearm_api_key` | declared key name | API_KEYS file (one FREEFORM key, not authoritative); delete deactivates; never a secret |
 
 | Ephemeral resource | Mints |
 |---|---|
@@ -84,11 +84,11 @@ reserves `source` in provider blocks.
 
 ### API keys and their secrets
 
-`rearm_api_key` declares a key's identity and settings -- its type, the component a COMPONENT key
-serves, a FREEFORM key's permissions, notes, status, `secret_expires_days`, `session_max_minutes` --
-and never holds a secret: a key it creates has none, and state carries only `secret_slots`
-metadata (slot, active, dates). The provider's key needs CONFIGURATION_WRITE and declares only keys
-no stronger than itself; an ORGANIZATION_RW key is an administrator's to give.
+`rearm_api_key` declares a FREEFORM key's identity and settings -- its permissions, notes, status,
+`secret_expires_days`, `session_max_minutes` -- and never holds a secret: a key it creates has none,
+and state carries only `secret_slots` metadata (slot, active, dates). FREEFORM is the only type
+declared: ORGANIZATION and ORGANIZATION_RW keys are deprecated. The provider's key needs
+CONFIGURATION_WRITE and declares only keys no stronger than itself.
 
 Secrets are minted by the `rearm_api_key_secret` ephemeral resource (Terraform and OpenTofu 1.10 and
 up) and handed to a consumer in the same run, such as a write-only attribute of a secret store; they

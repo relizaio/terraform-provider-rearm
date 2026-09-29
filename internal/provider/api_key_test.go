@@ -25,8 +25,7 @@ func setOf(vs ...string) types.Set {
 }
 
 func freeformKey() *apiKeyModel {
-	return &apiKeyModel{Name: types.StringValue("ci-release"), Type: types.StringValue("FREEFORM"),
-		Object: types.StringNull(), Notes: types.StringNull(), Status: types.StringNull(),
+	return &apiKeyModel{Name: types.StringValue("ci-release"), Notes: types.StringNull(), Status: types.StringNull(),
 		SecretExpiresDays: types.Int64Value(90), SessionMaxMinutes: types.Int64Null(),
 		Permissions: &apiKeyPermissions{Type: types.StringValue("READ_WRITE"), Functions: setOf("BOARD_WRITE", "CONFIGURATION_READ"),
 			Approvals: types.SetNull(types.StringType)}}
@@ -56,7 +55,7 @@ func TestApiKeySendsItsSettingsAndANewKeyActive(t *testing.T) {
 	if _, has := updated["status"]; has {
 		t.Errorf("an update leaves an unmanaged status alone: %v", updated)
 	}
-	for _, k := range []string{"notes", "object", "sessionMaxMinutes"} {
+	for _, k := range []string{"notes", "type", "sessionMaxMinutes"} {
 		if _, has := created[k]; has {
 			t.Errorf("unset %s is not sent: %v", k, created)
 		}
@@ -128,19 +127,6 @@ func TestApiKeyReadsBackKeepingEquivalentSpellings(t *testing.T) {
 	extra.fromView(view(), false)
 	if len(extra.Permissions.Objects) != 2 {
 		t.Errorf("grants ReARM has and the configuration not are read, so the plan shows them: %+v", extra.Permissions.Objects)
-	}
-}
-
-// A COMPONENT key's component, named or by uuid, is the one ReARM holds.
-func TestApiKeyKeepsTheConfiguredComponentSpelling(t *testing.T) {
-	for _, configured := range []string{"billing", "C-UUID"} {
-		got := sameObject(types.StringValue(configured), "billing", "c-uuid")
-		if got.ValueString() != configured {
-			t.Errorf("%s read back as %v", configured, got)
-		}
-	}
-	if got := sameObject(types.StringValue("other"), "billing", "c-uuid"); got.ValueString() != "billing" {
-		t.Errorf("another component is drift: %v", got)
 	}
 }
 

@@ -25,7 +25,7 @@ var (
 	_ resource.ResourceWithModifyPlan  = &apiKeyResource{}
 )
 
-// apiKeyResource manages one of the organization's API keys by its declared name (task RD3-11), sent
+// apiKeyResource manages one of the organization's FREEFORM API keys by its declared name (task RD3-11), sent
 // as an API_KEYS file holding that one key and not authoritative. It manages the key's identity and
 // settings only and never holds a secret: secrets are minted by the rearm_api_key_secret ephemeral
 // resource, or by a person with `rearm apikey mint`, and nothing of them reaches state but their
@@ -39,8 +39,6 @@ type apiKeyModel struct {
 	ID                types.String       `tfsdk:"id"`
 	UUID              types.String       `tfsdk:"uuid"`
 	Name              types.String       `tfsdk:"name"`
-	Type              types.String       `tfsdk:"type"`
-	Object            types.String       `tfsdk:"object"`
 	Permissions       *apiKeyPermissions `tfsdk:"permissions"`
 	Notes             types.String       `tfsdk:"notes"`
 	Status            types.String       `tfsdk:"status"`
@@ -94,7 +92,7 @@ func functionSetAttribute(desc string) schema.SetAttribute {
 func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
-		Description: "One of the organization's API keys, by its declared name: its identity and settings, never a " +
+		Description: "One of the organization's FREEFORM API keys, by its declared name: its identity and settings, never a " +
 			"secret. A key this resource creates has no secret; mint one with the rearm_api_key_secret ephemeral " +
 			"resource (Terraform or OpenTofu 1.10 and up) or with `rearm apikey mint`, so no secret value is ever " +
 			"written to state or plan files. Attributes left unset are not managed by Terraform. Destroying the " +
@@ -108,12 +106,8 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"name": schema.StringAttribute{Required: true, PlanModifiers: replace,
 				Description: "The key's declared name, unique among the organization's live keys. Import by it."},
-			"type": schema.StringAttribute{Required: true, PlanModifiers: replace,
-				Description: "FREEFORM, ORGANIZATION (reads the organization), ORGANIZATION_RW (an administrator's to give) or COMPONENT."},
-			"object": schema.StringAttribute{Optional: true, PlanModifiers: replace,
-				Description: "COMPONENT keys: the component or product the key serves, by exact name or uuid."},
 			"permissions": schema.SingleNestedAttribute{Optional: true,
-				Description: "FREEFORM keys: the key's permissions, replaced whole when set.",
+				Description: "The key's permissions, replaced whole when set.",
 				Attributes: map[string]schema.Attribute{
 					"type":      schema.StringAttribute{Optional: true, Description: "Organization-wide level: ESSENTIAL_READ, READ_ONLY, READ_WRITE or ADMIN."},
 					"functions": functionSetAttribute("Organization-wide functions, e.g. BOARD_WRITE, CONFIGURATION_WRITE."),
@@ -133,7 +127,7 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"notes":               schema.StringAttribute{Optional: true, Description: "Free text shown on the keys page."},
 			"status":              schema.StringAttribute{Optional: true, Description: "ACTIVE or INACTIVE; INACTIVE refuses every secret of the key."},
 			"secret_expires_days": schema.Int64Attribute{Optional: true, Description: "Days a secret minted for the key lives, 1 to 3650; unset mints secrets that do not expire."},
-			"session_max_minutes": schema.Int64Attribute{Optional: true, Description: "FREEFORM keys: bounds device-login sessions approved on the key, in minutes."},
+			"session_max_minutes": schema.Int64Attribute{Optional: true, Description: "Bounds device-login sessions approved on the key, in minutes."},
 			"secret_slots": schema.ListNestedAttribute{Computed: true,
 				Description: "The key's secrets: slot, state and dates -- never a value.",
 				NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
@@ -166,8 +160,6 @@ func apiKeysFile(entry map[string]any) *catalog.ApiKeysFile {
 // unset, so a key deactivated by a destroy comes back with the next create.
 func (m *apiKeyModel) toSpec(creating bool) map[string]any {
 	e := map[string]any{"name": m.Name.ValueString()}
-	putString(e, "type", m.Type)
-	putString(e, "object", m.Object)
 	putString(e, "notes", m.Notes)
 	putString(e, "status", m.Status)
 	if creating && m.Status.IsNull() {
@@ -268,16 +260,12 @@ func (r *apiKeyResource) read(ctx context.Context, m *apiKeyModel, full bool, d 
 }
 
 // fromView reads the key back: attributes the configuration sets (all of them on import), and the
-// computed ones. A value ReARM holds in an equivalent spelling -- a component by uuid where the
-// configuration names it, a blank note ReARM stores as none -- keeps the configured spelling.
+// computed ones. A value ReARM holds in an equivalent spelling -- a blank note ReARM stores as none,
+// object grants in another order -- keeps the configured spelling.
 func (m *apiKeyModel) fromView(k map[string]any, full bool) {
 	m.ID = strVal(k["keyId"])
 	m.UUID = strVal(k["uuid"])
 	m.Name = strVal(k["name"])
-	m.Type = strVal(k["type"])
-	if full || !m.Object.IsNull() {
-		m.Object = sameObject(m.Object, str(k["object"]), str(k["objectUuid"]))
-	}
 	if full || !m.Notes.IsNull() {
 		m.Notes = blankAsNone(m.Notes, strVal(k["notes"]))
 	}
@@ -294,20 +282,6 @@ func (m *apiKeyModel) fromView(k map[string]any, full bool) {
 		m.SecretSlots = append(m.SecretSlots, apiKeySecretSlot{Slot: intVal(sm["slot"]), Active: boolVal(sm["active"]),
 			CreatedDate: strVal(sm["createdDate"]), ExpiresDate: strVal(sm["expiresDate"]), LastUsedDate: strVal(sm["lastUsedDate"])})
 	}
-}
-
-// sameObject keeps the configured component when it names the one ReARM holds, by name or by uuid.
-func sameObject(configured types.String, name, uuid string) types.String {
-	if !configured.IsNull() && !configured.IsUnknown() {
-		c := strings.TrimSpace(configured.ValueString())
-		if c == name || strings.EqualFold(c, uuid) {
-			return configured
-		}
-	}
-	if name == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(name)
 }
 
 // blankAsNone keeps a configured blank where ReARM stores none; otherwise ReARM's value.
