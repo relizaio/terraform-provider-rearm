@@ -56,14 +56,74 @@ type agentBoardModel struct {
 }
 
 type boardSettingsModel struct {
-	BudgetMicros            types.Int64 `tfsdk:"budget_micros"`
-	SoftAlertPercent        types.Int64 `tfsdk:"soft_alert_percent"`
-	CycleCap                types.Int64 `tfsdk:"cycle_cap"`
-	NoProgressRepeatsToStop types.Int64 `tfsdk:"no_progress_repeats_to_stop"`
-	BlockingPriority        types.Int64 `tfsdk:"blocking_priority"`
-	CompletionPriority      types.Int64 `tfsdk:"completion_priority"`
-	HumanQueueAgeMinutes    types.Int64 `tfsdk:"human_queue_age_minutes"`
+	BudgetMicros            types.Int64          `tfsdk:"budget_micros"`
+	SoftAlertPercent        types.Int64          `tfsdk:"soft_alert_percent"`
+	CycleCap                types.Int64          `tfsdk:"cycle_cap"`
+	NoProgressRepeatsToStop types.Int64          `tfsdk:"no_progress_repeats_to_stop"`
+	BlockingPriority        types.Int64          `tfsdk:"blocking_priority"`
+	CompletionPriority      types.Int64          `tfsdk:"completion_priority"`
+	HumanQueueAgeMinutes    types.Int64          `tfsdk:"human_queue_age_minutes"`
 	Staleness               *boardStalenessModel `tfsdk:"staleness"`
+	Ladder                  *boardLadderModel    `tfsdk:"ladder"`
+}
+
+// boardLadderModel is the board's level ladder (task RD3-6), opt-in: its levels in order, each numbered by its
+// place from 0, and the ladder section's text when the board overrides the default. Set, it is the whole ladder.
+type boardLadderModel struct {
+	Levels []boardLadderLevelModel `tfsdk:"levels"`
+	Prompt types.String            `tfsdk:"prompt"`
+}
+
+type boardLadderLevelModel struct {
+	Name        types.String `tfsdk:"name"`
+	Description types.String `tfsdk:"description"`
+}
+
+func (l *boardLadderModel) toSpec() map[string]any {
+	levels := make([]any, 0, len(l.Levels))
+	for _, lv := range l.Levels {
+		m := map[string]any{}
+		putString(m, "name", lv.Name)
+		putString(m, "description", lv.Description)
+		levels = append(levels, m)
+	}
+	out := map[string]any{"levels": levels}
+	putString(out, "prompt", l.Prompt)
+	return out
+}
+
+// ladderFromExport reads the ladder whole, as the board replaces it whole: a level or a prompt ReARM has and
+// the configuration does not is drift. ReARM trims names and descriptions and stores a blank description or
+// prompt as none; where the configuration's value means the same, the configured spelling is kept, so a padded
+// name reads back as written rather than as a change.
+func ladderFromExport(prior *boardLadderModel, m map[string]any) *boardLadderModel {
+	out := &boardLadderModel{Levels: []boardLadderLevelModel{}, Prompt: strVal(m["prompt"])}
+	if prior != nil {
+		out.Prompt = ladderSpelling(prior.Prompt, out.Prompt)
+	}
+	for i, v := range list(m["levels"]) {
+		lv, _ := v.(map[string]any)
+		read := boardLadderLevelModel{Name: strVal(lv["name"]), Description: strVal(lv["description"])}
+		if prior != nil && i < len(prior.Levels) {
+			read.Name = ladderSpelling(prior.Levels[i].Name, read.Name)
+			read.Description = ladderSpelling(prior.Levels[i].Description, read.Description)
+		}
+		out.Levels = append(out.Levels, read)
+	}
+	return out
+}
+
+// ladderSpelling is the configured value when ReARM's reads the same once trimmed, a blank one reading as none;
+// otherwise ReARM's. Stricter than keepEquivalent: a value ReARM no longer has is drift, not kept.
+func ladderSpelling(configured, read types.String) types.String {
+	if configured.IsNull() || configured.IsUnknown() {
+		return read
+	}
+	trimmed := strings.TrimSpace(configured.ValueString())
+	if (trimmed == "" && read.IsNull()) || (!read.IsNull() && trimmed == strings.TrimSpace(read.ValueString())) {
+		return configured
+	}
+	return read
 }
 
 // boardStalenessModel is when the board ALERTs that work went stale (task RD3-4), minutes each, null
@@ -259,6 +319,24 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 							"repeat_minutes":          schema.Int64Attribute{Optional: true, Description: "How long a standing breach stays quiet before it is alerted again; unset is 240."},
 						},
 					},
+					"ladder": schema.SingleNestedAttribute{
+						Optional: true,
+						Description: "The board's level ladder, opt-in (task RD3-6): the levels in order, each numbered by its place from 0. " +
+							"With one, every task has a level (the board default is 0 when unset) and the served prompts carry a ladder " +
+							"section; without one, levels are refused. Set, this is the whole ladder. Removing a ladder is refused " +
+							"while a task carries a level.",
+						Attributes: map[string]schema.Attribute{
+							"levels": schema.ListNestedAttribute{
+								Required:    true,
+								Description: "The rungs, 0 first: requirements, solution, components, modules...",
+								NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
+									"name":        schema.StringAttribute{Required: true, Description: "Unique on the ladder."},
+									"description": schema.StringAttribute{Optional: true, Description: "What the level means on this board."},
+								}},
+							},
+							"prompt": schema.StringAttribute{Optional: true, Description: "The ladder section served on this board instead of the default; {{levels}} and {{last}} are rendered in."},
+						},
+					},
 				},
 			},
 			"groups": groupsAttribute(),
@@ -338,6 +416,9 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 		putInt(st, "humanQueueAgeMinutes", m.Settings.HumanQueueAgeMinutes)
 		if m.Settings.Staleness != nil {
 			st["staleness"] = m.Settings.Staleness.toSpec()
+		}
+		if m.Settings.Ladder != nil {
+			st["ladder"] = m.Settings.Ladder.toSpec()
 		}
 		s["settings"] = st
 	}
@@ -453,6 +534,10 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		stale, _ := st["staleness"].(map[string]any)
 		if m.Settings.Staleness != nil || (full && anyNonNull(stale)) {
 			m.Settings.Staleness = stalenessFromExport(stale)
+		}
+		ladder, _ := st["ladder"].(map[string]any)
+		if m.Settings.Ladder != nil || (full && len(list(ladder["levels"])) > 0) {
+			m.Settings.Ladder = ladderFromExport(m.Settings.Ladder, ladder)
 		}
 	}
 	if full || m.Groups != nil {
