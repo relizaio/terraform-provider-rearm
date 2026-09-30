@@ -39,6 +39,7 @@ type agentBoardModel struct {
 	Sources                []types.String          `tfsdk:"sources"`
 	DocumentsRepo          types.String            `tfsdk:"documents_repo"`
 	DocumentPaths          map[string]types.String `tfsdk:"document_paths"`
+	ElementFamilies        []elementFamilyModel    `tfsdk:"element_families"`
 	PriorityType           types.String            `tfsdk:"priority_type"`
 	PerAgentWipLimit       types.Int64             `tfsdk:"per_agent_wip_limit"`
 	DefaultTaskLevel       types.Int64             `tfsdk:"default_task_level"`
@@ -257,6 +258,7 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "Path templates per specification type, e.g. ARCHITECTURE = \"docs/design/{key}/architecture-{round}.md\". " +
 					"Placeholders: {key} (the task's key, e.g. RD-42), {round}, {type}, {component}. {task} is read as {key}: " +
 					"it plans without a difference, and a warning asks for {key}."},
+			"element_families":         elementFamiliesAttribute(),
 			"priority_type":            schema.StringAttribute{Optional: true, Description: "LAX or STRICT."},
 			"per_agent_wip_limit":      schema.Int64Attribute{Optional: true},
 			"default_task_level":       schema.Int64Attribute{Optional: true},
@@ -405,6 +407,9 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 		}
 		s["documentPaths"] = p
 	}
+	if m.ElementFamilies != nil {
+		s["elementFamilies"] = elementFamiliesSpec(m.ElementFamilies)
+	}
 	if m.Settings != nil {
 		st := map[string]any{}
 		putInt(st, "budgetMicros", m.Settings.BudgetMicros)
@@ -504,6 +509,14 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		}
 		if full && len(m.DocumentPaths) == 0 {
 			m.DocumentPaths = nil
+		}
+	}
+	if full || m.ElementFamilies != nil {
+		// The export omits the key when the board declares none; a configured [] then reads back as [].
+		families, _ := spec["elementFamilies"].(map[string]any)
+		m.ElementFamilies = elementFamiliesFromExport(m.ElementFamilies, families)
+		if full && len(m.ElementFamilies) == 0 {
+			m.ElementFamilies = nil
 		}
 	}
 	// Always read: unset, the server derived it; set, the configured spelling stands for the same prefix.

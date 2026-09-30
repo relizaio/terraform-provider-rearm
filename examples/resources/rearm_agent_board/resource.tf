@@ -33,6 +33,14 @@ resource "rearm_agent_board" "platform" {
     ARCHITECTURE = "docs/design/{key}/architecture-{round}.md"
   }
 
+  # Element id families over the defaults. defined_in lists the document types whose documents define the
+  # prefix's ids, in order of precedence; a heading with the id anywhere else is a reference. Unset takes the
+  # family's default; [] means references only.
+  element_families = [
+    { prefix = "T", family = "test", defined_in = ["TEST_PLAN"] },
+    { prefix = "SAF", family = "safety" },
+  ]
+
   settings = {
     budget_micros       = 50000000
     cycle_cap           = 6
