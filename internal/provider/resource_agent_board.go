@@ -135,6 +135,8 @@ type boardStalenessModel struct {
 	DeliveryStuckMinutes types.Int64 `tfsdk:"delivery_stuck_minutes"`
 	SeatSilentMinutes    types.Int64 `tfsdk:"seat_silent_minutes"`
 	RepeatMinutes        types.Int64 `tfsdk:"repeat_minutes"`
+	// Minutes past an investigation's deadline before it alerts (task RD4-12); 0 alerts at the deadline.
+	InvestigationOverdueMinutes types.Int64 `tfsdk:"investigation_overdue_minutes"`
 }
 
 func (s *boardStalenessModel) toSpec() map[string]any {
@@ -144,19 +146,29 @@ func (s *boardStalenessModel) toSpec() map[string]any {
 	putInt(out, "deliveryStuckMinutes", s.DeliveryStuckMinutes)
 	putInt(out, "seatSilentMinutes", s.SeatSilentMinutes)
 	putInt(out, "repeatMinutes", s.RepeatMinutes)
+	putInt(out, "investigationOverdueMinutes", s.InvestigationOverdueMinutes)
 	return out
 }
 
 // stalenessFromExport reads the block whole, because the board replaces it whole: a threshold the
-// configuration leaves out and ReARM has set is drift, not something to keep.
-func stalenessFromExport(m map[string]any) *boardStalenessModel {
-	return &boardStalenessModel{
-		RoleUnstaffedMinutes: intVal(m["roleUnstaffedMinutes"]),
-		HopNoProgressMinutes: intVal(m["hopNoProgressMinutes"]),
-		DeliveryStuckMinutes: intVal(m["deliveryStuckMinutes"]),
-		SeatSilentMinutes:    intVal(m["seatSilentMinutes"]),
-		RepeatMinutes:        intVal(m["repeatMinutes"]),
+// configuration leaves out and ReARM has set is drift, not something to keep. The investigation rule (task
+// RD4-12) is read only when the export carries its key: a client that does not read it yet says nothing about it,
+// and the prior value stands.
+func stalenessFromExport(prior *boardStalenessModel, m map[string]any) *boardStalenessModel {
+	out := &boardStalenessModel{
+		RoleUnstaffedMinutes:        intVal(m["roleUnstaffedMinutes"]),
+		HopNoProgressMinutes:        intVal(m["hopNoProgressMinutes"]),
+		DeliveryStuckMinutes:        intVal(m["deliveryStuckMinutes"]),
+		SeatSilentMinutes:           intVal(m["seatSilentMinutes"]),
+		RepeatMinutes:               intVal(m["repeatMinutes"]),
+		InvestigationOverdueMinutes: types.Int64Null(),
 	}
+	if _, present := m["investigationOverdueMinutes"]; present {
+		out.InvestigationOverdueMinutes = intVal(m["investigationOverdueMinutes"])
+	} else if prior != nil {
+		out.InvestigationOverdueMinutes = prior.InvestigationOverdueMinutes
+	}
+	return out
 }
 
 // boardDocumentsModel is how the board names and places its documents (board-documents.md D2, D6):
@@ -314,11 +326,12 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 						Description: "When the board ALERTs that work went stale, minutes each (at least 1); a threshold left out is off. " +
 							"Only an ALERT is posted: no task changes state. Set, this is the whole block.",
 						Attributes: map[string]schema.Attribute{
-							"role_unstaffed_minutes":  schema.Int64Attribute{Optional: true, Description: "A task queued for a role this long while no session of the role polled the board."},
-							"hop_no_progress_minutes": schema.Int64Attribute{Optional: true, Description: "A task assigned this long with nothing from its holder: no document, sign-off, question or usage report."},
-							"delivery_stuck_minutes":  schema.Int64Attribute{Optional: true, Description: "A task delivering this long with a linked PR not delivered."},
-							"seat_silent_minutes":     schema.Int64Attribute{Optional: true, Description: "A task waiting on the coordinator this long while the seat is held."},
-							"repeat_minutes":          schema.Int64Attribute{Optional: true, Description: "How long a standing breach stays quiet before it is alerted again; unset is 240."},
+							"role_unstaffed_minutes":        schema.Int64Attribute{Optional: true, Description: "A task queued for a role this long while no session of the role polled the board."},
+							"hop_no_progress_minutes":       schema.Int64Attribute{Optional: true, Description: "A task assigned this long with nothing from its holder: no document, sign-off, question or usage report."},
+							"delivery_stuck_minutes":        schema.Int64Attribute{Optional: true, Description: "A task delivering this long with a linked PR not delivered."},
+							"seat_silent_minutes":           schema.Int64Attribute{Optional: true, Description: "A task waiting on the coordinator this long while the seat is held."},
+							"repeat_minutes":                schema.Int64Attribute{Optional: true, Description: "How long a standing breach stays quiet before it is alerted again; unset is 240."},
+							"investigation_overdue_minutes": schema.Int64Attribute{Optional: true, Description: "An investigation (task RD4-12) not completed this long after its deadline; 0 alerts at the deadline."},
 						},
 					},
 					"ladder": schema.SingleNestedAttribute{
@@ -546,7 +559,7 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 		readInt(&m.Settings.HumanQueueAgeMinutes, st, "humanQueueAgeMinutes", full)
 		stale, _ := st["staleness"].(map[string]any)
 		if m.Settings.Staleness != nil || (full && anyNonNull(stale)) {
-			m.Settings.Staleness = stalenessFromExport(stale)
+			m.Settings.Staleness = stalenessFromExport(m.Settings.Staleness, stale)
 		}
 		ladder, _ := st["ladder"].(map[string]any)
 		if m.Settings.Ladder != nil || (full && len(list(ladder["levels"])) > 0) {

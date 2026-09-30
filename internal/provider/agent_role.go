@@ -31,6 +31,16 @@ type roleModel struct {
 	RequiredInputs       []requiredInputModel  `tfsdk:"required_inputs"`
 	ProducesOutputs      []producedOutputModel `tfsdk:"produces_outputs"`
 	Strength             *strengthModel        `tfsdk:"strength"`
+	Commissions          *commissionsModel     `tfsdk:"commissions"`
+}
+
+// commissionsModel is who a role may commission for a report (task RD4-12): roles by name, each of which must
+// produce INVESTIGATION_REPORT at TASK scope on the board (or among the presets).
+type commissionsModel struct {
+	Roles               []types.String `tfsdk:"roles"`
+	Intake              types.String   `tfsdk:"intake"`
+	DefaultBudgetMicros types.Int64    `tfsdk:"default_budget_micros"`
+	Review              types.String   `tfsdk:"review"`
 }
 
 type requiredInputModel struct {
@@ -101,6 +111,18 @@ func roleAttributes() map[string]schema.Attribute {
 				"required":      schema.BoolAttribute{Optional: true},
 			}},
 		},
+		"commissions": schema.SingleNestedAttribute{
+			Optional: true,
+			Description: "Who this role may commission for an investigation report (task RD4-12): an agent holding a task in" +
+				" this role asks one of these roles, and the report comes back pinned on its task. Every role named must" +
+				" produce INVESTIGATION_REPORT at TASK scope. roles = [] commissions nobody.",
+			Attributes: map[string]schema.Attribute{
+				"roles":                 schema.ListAttribute{Required: true, ElementType: types.StringType, Description: "The investigating roles, by name."},
+				"intake":                schema.StringAttribute{Optional: true, Description: "AUTO (queued at once; the default) or COORDINATOR (through intake)."},
+				"default_budget_micros": schema.Int64Attribute{Optional: true, Description: "An investigation's budget when a commission names none, in USD micros; capped by the board's."},
+				"review":                schema.StringAttribute{Optional: true, Description: "A role that reviews the report before it returns, when a commission names none."},
+			},
+		},
 		"strength": schema.SingleNestedAttribute{
 			Optional:    true,
 			Description: "Model strength the role needs. Only the parts set here are managed.",
@@ -163,6 +185,17 @@ func roleToSpec(r *roleModel) map[string]any {
 			outs = append(outs, e)
 		}
 		m["producesOutputs"] = outs
+	}
+	if r.Commissions != nil {
+		roles := []any{}
+		for _, n := range r.Commissions.Roles {
+			roles = append(roles, n.ValueString())
+		}
+		c := map[string]any{"roles": roles}
+		putString(c, "intake", r.Commissions.Intake)
+		putInt(c, "defaultBudgetMicros", r.Commissions.DefaultBudgetMicros)
+		putString(c, "review", r.Commissions.Review)
+		m["commissions"] = c
 	}
 	if r.Strength != nil {
 		s := map[string]any{}
@@ -229,6 +262,7 @@ func roleFromExport(r *roleModel, e map[string]any, full bool) {
 			r.ProducesOutputs = []producedOutputModel{}
 		}
 	}
+	readCommissions(r, e, full)
 	st, _ := e["strength"].(map[string]any)
 	if r.Strength != nil || (full && hasStrength(st)) {
 		if r.Strength == nil {
@@ -256,6 +290,44 @@ func roleFromExport(r *roleModel, e map[string]any, full bool) {
 			}
 		}
 	}
+}
+
+// readCommissions refreshes a role's commissions (task RD4-12). An export without the key at all comes from a
+// client that does not read it yet, and says nothing: the configuration stands. A block naming no role is the same
+// as none, so a configured roles = [] reads back as configured.
+func readCommissions(r *roleModel, e map[string]any, full bool) {
+	raw, present := e["commissions"]
+	if !present || (!full && r.Commissions == nil) {
+		return
+	}
+	c, _ := raw.(map[string]any)
+	names := list(c["roles"])
+	if len(names) == 0 {
+		if full {
+			r.Commissions = nil
+		} else if len(r.Commissions.Roles) > 0 {
+			r.Commissions = &commissionsModel{Roles: []types.String{}, Intake: types.StringNull(),
+				DefaultBudgetMicros: types.Int64Null(), Review: types.StringNull()}
+		}
+		return
+	}
+	if r.Commissions == nil {
+		r.Commissions = &commissionsModel{Intake: types.StringNull(), DefaultBudgetMicros: types.Int64Null(),
+			Review: types.StringNull()}
+	}
+	configured := r.Commissions.Roles
+	r.Commissions.Roles = []types.String{}
+	for i, n := range names {
+		// The configured spelling where it names the same role (roles match case-insensitively).
+		if i < len(configured) && sameName(configured[i].ValueString(), str(n)) {
+			r.Commissions.Roles = append(r.Commissions.Roles, configured[i])
+			continue
+		}
+		r.Commissions.Roles = append(r.Commissions.Roles, types.StringValue(str(n)))
+	}
+	readString(&r.Commissions.Intake, c, "intake", full)
+	readInt(&r.Commissions.DefaultBudgetMicros, c, "defaultBudgetMicros", full)
+	readString(&r.Commissions.Review, c, "review", full)
 }
 
 func hasStrength(st map[string]any) bool {

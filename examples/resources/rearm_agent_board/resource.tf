@@ -47,6 +47,11 @@ resource "rearm_agent_board" "platform" {
     blocking_priority   = 2
     completion_priority = 1
 
+    # Alert when an investigation is not done this many minutes after its deadline.
+    staleness = {
+      investigation_overdue_minutes = 60
+    }
+
     # The level ladder, opt-in: with it every task has a level (0 unless set), the poll offers lower levels
     # first, and every served prompt explains the rungs. Without it levels are refused, so a group's
     # default_level below needs it. Removing it is refused while a task or group carries a level.
@@ -77,6 +82,13 @@ resource "rearm_agent_board" "platform" {
       produces_outputs = [
         { specification = "ARCHITECTURE", scope = "TASK", required = true },
       ]
+      # The designer may ask the reviewer for an investigation report; it comes back pinned on the
+      # designer's task. Every role named must produce INVESTIGATION_REPORT at TASK scope.
+      commissions = {
+        roles                 = ["reviewer"]
+        intake                = "AUTO"
+        default_budget_micros = 3000000
+      }
     },
     {
       name       = "reviewer"
@@ -85,6 +97,10 @@ resource "rearm_agent_board" "platform" {
       human_gate = "ON_ANY_SIGNOFF"
       required_inputs = [
         { kind = "DOCUMENT", specification = "ARCHITECTURE", scope = "TASK", min_lifecycle = "ASSEMBLED" },
+      ]
+      produces_outputs = [
+        { specification = "REVIEW_FINDINGS", scope = "TASK", required = true },
+        { specification = "INVESTIGATION_REPORT", scope = "TASK", required = true }, # when commissioned
       ]
       hop_budget_micros = 2000000 # allowance per hop: flagged when exceeded, not enforced
       blind_review      = true    # reads the task without earlier hops' notes, sessions and agents
