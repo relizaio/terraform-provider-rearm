@@ -52,9 +52,9 @@ resource "rearm_agent_board" "platform" {
       investigation_overdue_minutes = 60
     }
 
-    # The level ladder, opt-in: with it every task has a level (0 unless set), the poll offers lower levels
-    # first, and every served prompt explains the rungs. Without it levels are refused, so a group's
-    # default_level below needs it. Removing it is refused while a task or group carries a level.
+    # The level ladder, opt-in: with it every task has a work level (0 unless set), the poll offers lower
+    # levels first, and every served prompt explains the rungs. Without it work levels are refused, so a
+    # group's default_work_level below needs it. Removing it is refused while a task or group carries one.
     ladder = {
       levels = [
         { name = "requirements", description = "what the client needs" },
@@ -70,7 +70,7 @@ resource "rearm_agent_board" "platform" {
   # tasks. Leave groups unset to manage the board without its groups.
   groups = [
     { key = "core-work", name = "Core services" },
-    { key = "ui-work", name = "Front end", depends_on = ["core-work"], default_level = 2 }, # a rung of the ladder
+    { key = "ui-work", name = "Front end", depends_on = ["core-work"], default_work_level = 2 }, # a rung of the ladder
   ]
 
   # The role list: a role not listed here is deactivated, never deleted.
@@ -83,7 +83,7 @@ resource "rearm_agent_board" "platform" {
         { specification = "ARCHITECTURE", scope = "TASK", required = true },
       ]
       # The designer may ask the reviewer for an investigation report; it comes back pinned on the
-      # designer's task. Every role named must produce INVESTIGATION_REPORT at TASK scope.
+      # designer's task. Every role named must produce BOARD_INVESTIGATION_REPORT at TASK scope.
       commissions = {
         roles                 = ["reviewer"]
         intake                = "AUTO"
@@ -99,8 +99,8 @@ resource "rearm_agent_board" "platform" {
         { kind = "DOCUMENT", specification = "ARCHITECTURE", scope = "TASK", min_lifecycle = "ASSEMBLED" },
       ]
       produces_outputs = [
-        { specification = "REVIEW_FINDINGS", scope = "TASK", required = true },
-        { specification = "INVESTIGATION_REPORT", scope = "TASK", required = true }, # when commissioned
+        { specification = "BOARD_REVIEW_ITEMS", scope = "TASK", required = true },
+        { specification = "BOARD_INVESTIGATION_REPORT", scope = "TASK", required = true }, # when commissioned
       ]
       hop_budget_micros = 2000000 # allowance per hop: flagged when exceeded, not enforced
       blind_review      = true    # reads the task without earlier hops' notes, sessions and agents

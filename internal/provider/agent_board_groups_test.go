@@ -15,7 +15,7 @@ import (
 
 func keyedGroup(key string) groupModel {
 	return groupModel{Key: types.StringValue(key), Name: types.StringNull(), Description: types.StringNull(),
-		DefaultLevel: types.Int64Null(), Status: types.StringNull()}
+		DefaultWorkLevel: types.Int64Null(), Status: types.StringNull()}
 }
 
 func groupKeysOf(gs []groupModel) []string {
@@ -72,11 +72,11 @@ func TestGroupsAreSentOnlyWhenSetAndWithTheMembersSet(t *testing.T) {
 	core.DependsOn = strs()
 	ui := keyedGroup("ui-work")
 	ui.DependsOn = strs("core-work")
-	ui.DefaultLevel = types.Int64Value(2)
+	ui.DefaultWorkLevel = types.Int64Value(2)
 	m.Groups = []groupModel{core, ui}
 	want := []any{
 		map[string]any{"key": "core-work", "name": "The core", "dependsOn": []any{}},
-		map[string]any{"key": "ui-work", "dependsOn": []any{"core-work"}, "defaultLevel": int64(2)},
+		map[string]any{"key": "ui-work", "dependsOn": []any{"core-work"}, "defaultWorkLevel": int64(2)},
 	}
 	if got := m.toSpec().Spec["groups"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("groups sent as %#v, want %#v", got, want)
@@ -97,7 +97,7 @@ func TestGroupsRoundTrip(t *testing.T) {
 	m.Groups = configured
 	exported := exportOf(m.toSpec().Spec["groups"].([]any),
 		map[string]any{"key": "old-work", "status": "CLOSED"},
-		map[string]any{"key": "extra-work", "name": "Made in the UI", "status": "OPEN", "defaultLevel": float64(1)})
+		map[string]any{"key": "extra-work", "name": "Made in the UI", "status": "OPEN", "defaultWorkLevel": float64(1)})
 	// Members the configuration leaves unset read back unset whatever ReARM holds.
 	exported[1].(map[string]any)["description"] = "set in the UI"
 
@@ -109,7 +109,7 @@ func TestGroupsRoundTrip(t *testing.T) {
 		t.Errorf("the configured groups read back as %#v, want %#v", m.Groups[:2], configured)
 	}
 	extra := m.Groups[2]
-	if extra.Name.ValueString() != "Made in the UI" || extra.DefaultLevel.ValueInt64() != 1 || extra.Status.ValueString() != "OPEN" {
+	if extra.Name.ValueString() != "Made in the UI" || extra.DefaultWorkLevel.ValueInt64() != 1 || extra.Status.ValueString() != "OPEN" {
 		t.Errorf("an unlisted open group reads every member: %#v", extra)
 	}
 
@@ -173,7 +173,7 @@ func TestTheReadReturnsTheGroupsFromTheServer(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"exportBoardProgrammatic": map[string]any{
 			"name": "platform", "target": "platform-api", "groups": []any{
-				map[string]any{"key": "ui-work", "dependsOn": []any{"core-work"}, "status": "OPEN", "defaultLevel": 2},
+				map[string]any{"key": "ui-work", "dependsOn": []any{"core-work"}, "status": "OPEN", "defaultWorkLevel": 2},
 				map[string]any{"key": "core-work", "name": "The core", "status": "OPEN"},
 				map[string]any{"key": "old-work", "status": "CLOSED"},
 			}}}})
@@ -190,7 +190,7 @@ func TestTheReadReturnsTheGroupsFromTheServer(t *testing.T) {
 	core.Name = types.StringValue("The core")
 	ui := keyedGroup("ui-work")
 	ui.DependsOn = strs("core-work")
-	ui.DefaultLevel = types.Int64Value(2)
+	ui.DefaultWorkLevel = types.Int64Value(2)
 	m.Groups = []groupModel{ui, core}
 	ds := diag.Diagnostics{}
 	if !r.read(context.Background(), &m, false, &diagAdder{&ds}) || ds.HasError() {

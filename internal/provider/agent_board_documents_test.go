@@ -237,7 +237,7 @@ func TestAComponentReadsTheDocumentKind(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"exportCatalogProgrammatic": map[string]any{
 			"kind": "CATALOG", "version": 1, "components": []any{
-				map[string]any{"name": "dogfood-architecture", "type": "COMPONENT", "kind": "DOCUMENT"}}}}})
+				map[string]any{"name": "dogfood-architecture", "type": "COMPONENT", "kind": "BOARD_DOCUMENT"}}}}})
 	}))
 	defer srv.Close()
 	c, err := rearm.New(srv.URL, "id", "secret", rearm.WithoutTokenExchange())
@@ -249,8 +249,8 @@ func TestAComponentReadsTheDocumentKind(t *testing.T) {
 	if !(&componentResource{client: c}).read(context.Background(), &m, &diagAdder{&ds}) || ds.HasError() {
 		t.Fatalf("the component was not read: %v", ds)
 	}
-	if m.Kind.ValueString() != "DOCUMENT" {
-		t.Errorf("kind reads as DOCUMENT: %v", m.Kind)
+	if m.Kind.ValueString() != "BOARD_DOCUMENT" {
+		t.Errorf("kind reads as BOARD_DOCUMENT: %v", m.Kind)
 	}
 }
 

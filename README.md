@@ -63,10 +63,10 @@ archives it, keeping its tasks and history; destroying a preset deactivates it. 
 leaves tasks waiting on a deactivated role comes back as a Terraform warning.
 
 `settings.ladder` declares the board's level ladder, opt-in: its rungs in order (a name and an
-optional description), each numbered by its place from 0. With it every task has a level (0 unless
-set) and the served prompts explain the rungs; without it a level -- a group's `default_level`
-included -- is refused. It is read back whole, and removing it is refused while a task or group
-carries a level.
+optional description), each numbered by its place from 0. With it every task has a work level (0
+unless set) and the served prompts explain the rungs; without it a work level -- the board's
+`default_work_level` and a group's `default_work_level` included -- is refused. It is read back
+whole, and removing it is refused while a task or group carries a work level.
 
 ### Provenance
 

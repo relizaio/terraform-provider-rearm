@@ -20,7 +20,7 @@ type elementFamilyModel struct {
 func elementFamiliesAttribute() schema.Attribute {
 	return schema.SetNestedAttribute{
 		Optional: true,
-		Description: "Element id families over ReARM's defaults (REQ requirement, T and TEST test, Q question, F finding, ...). " +
+		Description: "Element id families over ReARM's defaults (REQ requirement, T and TEST test, Q question, F review-item, ...). " +
 			"Each entry names a prefix and its family, and optionally defined_in: the specification types whose documents " +
 			"define the prefix's ids, in order of precedence (a document of an earlier type owns an id; elsewhere a heading " +
 			"with the id is a reference). Unset defined_in takes the family's default; [] means references only. A set: " +
@@ -30,7 +30,7 @@ func elementFamiliesAttribute() schema.Attribute {
 			"prefix": schema.StringAttribute{Required: true, Description: "Capital letters and digits, starting with a letter, e.g. REQ."},
 			"family": schema.StringAttribute{Required: true, Description: "The family's name, e.g. requirement."},
 			"defined_in": schema.ListAttribute{Optional: true, ElementType: types.StringType,
-				Description: "Specification types, e.g. [\"TEST_PLAN\", \"TEST_REPORT\"]; CHECK_REPORT defines nothing."},
+				Description: "Specification types, e.g. [\"TEST_PLAN\", \"BOARD_TEST_REPORT\"]; BOARD_ELEMENT_CHECK_REPORT defines nothing."},
 		}},
 	}
 }

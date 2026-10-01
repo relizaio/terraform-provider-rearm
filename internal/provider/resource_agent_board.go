@@ -42,7 +42,7 @@ type agentBoardModel struct {
 	ElementFamilies        []elementFamilyModel    `tfsdk:"element_families"`
 	PriorityType           types.String            `tfsdk:"priority_type"`
 	PerAgentWipLimit       types.Int64             `tfsdk:"per_agent_wip_limit"`
-	DefaultTaskLevel       types.Int64             `tfsdk:"default_task_level"`
+	DefaultWorkLevel       types.Int64             `tfsdk:"default_work_level"`
 	DefaultInputResolution types.String            `tfsdk:"default_input_resolution"`
 	CoordinatorPrompt      types.String            `tfsdk:"coordinator_prompt"`
 	CoordinatorCaps        []types.String          `tfsdk:"coordinator_capabilities"`
@@ -270,10 +270,11 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "Path templates per specification type, e.g. ARCHITECTURE = \"docs/design/{key}/architecture-{round}.md\". " +
 					"Placeholders: {key} (the task's key, e.g. RD-42), {round}, {type}, {component}. {task} is read as {key}: " +
 					"it plans without a difference, and a warning asks for {key}."},
-			"element_families":         elementFamiliesAttribute(),
-			"priority_type":            schema.StringAttribute{Optional: true, Description: "LAX or STRICT."},
-			"per_agent_wip_limit":      schema.Int64Attribute{Optional: true},
-			"default_task_level":       schema.Int64Attribute{Optional: true},
+			"element_families":    elementFamiliesAttribute(),
+			"priority_type":       schema.StringAttribute{Optional: true, Description: "LAX or STRICT."},
+			"per_agent_wip_limit": schema.Int64Attribute{Optional: true},
+			"default_work_level": schema.Int64Attribute{Optional: true,
+				Description: "The work level a task reads when neither it nor its group sets one, a rung of the ladder."},
 			"default_input_resolution": schema.StringAttribute{Optional: true, Description: "LATEST_PASSING or STRICT_LATEST."},
 			"coordinator_prompt": schema.StringAttribute{Optional: true,
 				Description: "Left unset on a new board, it is seeded from the organization's coordinator preset."},
@@ -318,8 +319,8 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"soft_alert_percent":          schema.Int64Attribute{Optional: true},
 					"cycle_cap":                   schema.Int64Attribute{Optional: true},
 					"no_progress_repeats_to_stop": schema.Int64Attribute{Optional: true},
-					"blocking_priority":           schema.Int64Attribute{Optional: true, Description: "Findings at or above this priority send work back."},
-					"completion_priority":         schema.Int64Attribute{Optional: true, Description: "Findings at or above this priority stop completion."},
+					"blocking_priority":           schema.Int64Attribute{Optional: true, Description: "Review items at or above this priority send work back."},
+					"completion_priority":         schema.Int64Attribute{Optional: true, Description: "Review items at or above this priority stop completion."},
 					"human_queue_age_minutes":     schema.Int64Attribute{Optional: true, Description: "Minutes a task may wait on a person before the board sends AGENT_TASK_QUEUE_AGE; 0 is off."},
 					"staleness": schema.SingleNestedAttribute{
 						Optional: true,
@@ -337,9 +338,9 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"ladder": schema.SingleNestedAttribute{
 						Optional: true,
 						Description: "The board's level ladder, opt-in (task RD3-6): the levels in order, each numbered by its place from 0. " +
-							"With one, every task has a level (the board default is 0 when unset) and the served prompts carry a ladder " +
-							"section; without one, levels are refused. Set, this is the whole ladder. Removing a ladder is refused " +
-							"while a task carries a level.",
+							"With one, every task has a work level (the board default is 0 when unset) and the served prompts carry a ladder " +
+							"section; without one, work levels are refused. Set, this is the whole ladder. Removing a ladder is refused " +
+							"while a task carries a work level.",
 						Attributes: map[string]schema.Attribute{
 							"levels": schema.ListNestedAttribute{
 								Required:    true,
@@ -379,7 +380,7 @@ func (m *agentBoardModel) toSpec() *catalog.BoardFile {
 	putString(s, "documentsRepo", m.DocumentsRepo)
 	putString(s, "priorityType", m.PriorityType)
 	putInt(s, "perAgentWipLimit", m.PerAgentWipLimit)
-	putInt(s, "defaultTaskLevel", m.DefaultTaskLevel)
+	putInt(s, "defaultWorkLevel", m.DefaultWorkLevel)
 	putString(s, "defaultInputResolution", m.DefaultInputResolution)
 	putString(s, "coordinatorPrompt", m.CoordinatorPrompt)
 	putString(s, "taskPrefix", m.TaskPrefix)
@@ -471,7 +472,7 @@ func (m *agentBoardModel) fromExport(spec map[string]any, full bool) {
 	}
 	readString(&m.PriorityType, spec, "priorityType", full)
 	readInt(&m.PerAgentWipLimit, spec, "perAgentWipLimit", full)
-	readInt(&m.DefaultTaskLevel, spec, "defaultTaskLevel", full)
+	readInt(&m.DefaultWorkLevel, spec, "defaultWorkLevel", full)
 	readString(&m.DefaultInputResolution, spec, "defaultInputResolution", full)
 	readString(&m.CoordinatorPrompt, spec, "coordinatorPrompt", full)
 	if full || m.Sources != nil {

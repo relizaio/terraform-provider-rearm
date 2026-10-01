@@ -12,7 +12,7 @@ func boardModel() agentBoardModel {
 	return agentBoardModel{
 		ID: types.StringNull(), Name: types.StringValue("platform"), Description: types.StringNull(),
 		Target: types.StringValue("platform-api"), DocumentsRepo: types.StringNull(), PriorityType: types.StringNull(),
-		PerAgentWipLimit: types.Int64Null(), DefaultTaskLevel: types.Int64Null(),
+		PerAgentWipLimit: types.Int64Null(), DefaultWorkLevel: types.Int64Null(),
 		DefaultInputResolution: types.StringNull(), CoordinatorPrompt: types.StringNull(),
 	}
 }
@@ -298,8 +298,8 @@ func TestATaskPlaceholderIsSentAsKeyAndKeepsItsSpelling(t *testing.T) {
 	}
 
 	w := taskPlaceholderWarning(map[string]types.String{"ARCHITECTURE": types.StringValue("docs/design/{task}.md"),
-		"QUESTIONS": types.StringValue("q/{task}.md"), "DETAILED_DESIGN": types.StringValue("impl/{key}.md")})
-	if !strings.Contains(w, "ARCHITECTURE, QUESTIONS use {task}") {
+		"BOARD_QUESTIONS": types.StringValue("q/{task}.md"), "DETAILED_DESIGN": types.StringValue("impl/{key}.md")})
+	if !strings.Contains(w, "ARCHITECTURE, BOARD_QUESTIONS use {task}") {
 		t.Errorf("warning %q", w)
 	}
 	if taskPlaceholderWarning(map[string]types.String{"ARCHITECTURE": types.StringValue("docs/{key}.md")}) != "" {

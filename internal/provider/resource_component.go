@@ -73,7 +73,7 @@ func (r *componentResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"type": schema.StringAttribute{Required: true, Description: "COMPONENT or PRODUCT. Cannot change.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 			"kind": schema.StringAttribute{Optional: true, Computed: true, Description: "GENERIC or HELM. A board's " +
-				"document component reads as DOCUMENT; ReARM makes those itself and refuses one configured here."},
+				"document component reads as BOARD_DOCUMENT; ReARM makes those itself and refuses one configured here."},
 			"version_schema":            schema.StringAttribute{Optional: true, Computed: true, Description: "Version schema of the base branch, e.g. semver."},
 			"marketing_version_schema":  schema.StringAttribute{Optional: true, Computed: true},
 			"version_type":              schema.StringAttribute{Optional: true, Computed: true, Description: "DEV or MARKETING."},

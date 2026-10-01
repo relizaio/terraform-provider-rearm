@@ -14,12 +14,12 @@ import (
 // groupModel is one task group as the board file declares it (task RD2-30): configuration only,
 // dependencies by key. Each member set here is managed; one left unset keeps what ReARM has.
 type groupModel struct {
-	Key          types.String   `tfsdk:"key"`
-	Name         types.String   `tfsdk:"name"`
-	Description  types.String   `tfsdk:"description"`
-	DependsOn    []types.String `tfsdk:"depends_on"`
-	DefaultLevel types.Int64    `tfsdk:"default_level"`
-	Status       types.String   `tfsdk:"status"`
+	Key              types.String   `tfsdk:"key"`
+	Name             types.String   `tfsdk:"name"`
+	Description      types.String   `tfsdk:"description"`
+	DependsOn        []types.String `tfsdk:"depends_on"`
+	DefaultWorkLevel types.Int64    `tfsdk:"default_work_level"`
+	Status           types.String   `tfsdk:"status"`
 }
 
 func groupsAttribute() schema.Attribute {
@@ -35,8 +35,8 @@ func groupsAttribute() schema.Attribute {
 			"description": schema.StringAttribute{Optional: true},
 			"depends_on": schema.ListAttribute{Optional: true, ElementType: types.StringType,
 				Description: "Keys of the groups this one waits on: of this list, or groups the board already has. A loop is refused."},
-			"default_level": schema.Int64Attribute{Optional: true,
-				Description: "The level its tasks read when they set none (task, then group, then board)."},
+			"default_work_level": schema.Int64Attribute{Optional: true,
+				Description: "The work level its tasks read when they set none (task, then group, then board)."},
 			"status": schema.StringAttribute{Optional: true, Description: "OPEN or CLOSED; a closed group takes no new tasks."},
 		}},
 	}
@@ -58,7 +58,7 @@ func groupsToSpec(groups []groupModel) []any {
 			}
 			e["dependsOn"] = deps
 		}
-		putInt(e, "defaultLevel", g.DefaultLevel)
+		putInt(e, "defaultWorkLevel", g.DefaultWorkLevel)
 		putString(e, "status", g.Status)
 		out = append(out, e)
 	}
@@ -88,7 +88,7 @@ func groupsFromExport(configured []groupModel, exported []any, full bool) []grou
 				continue
 			}
 			g = groupModel{Key: types.StringValue(key), Name: types.StringNull(), Description: types.StringNull(),
-				DefaultLevel: types.Int64Null(), Status: types.StringNull()}
+				DefaultWorkLevel: types.Int64Null(), Status: types.StringNull()}
 		}
 		readGroup(&g, e, full || !listed)
 		out = append(out, g)
@@ -99,7 +99,7 @@ func groupsFromExport(configured []groupModel, exported []any, full bool) []grou
 func readGroup(g *groupModel, e map[string]any, full bool) {
 	readString(&g.Name, e, "name", full)
 	readString(&g.Description, e, "description", full)
-	readInt(&g.DefaultLevel, e, "defaultLevel", full)
+	readInt(&g.DefaultWorkLevel, e, "defaultWorkLevel", full)
 	readString(&g.Status, e, "status", full)
 	if full || g.DependsOn != nil {
 		// The export omits dependsOn when there are none; a configured [] then reads back as [].

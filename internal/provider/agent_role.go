@@ -35,7 +35,7 @@ type roleModel struct {
 }
 
 // commissionsModel is who a role may commission for a report (task RD4-12): roles by name, each of which must
-// produce INVESTIGATION_REPORT at TASK scope on the board (or among the presets).
+// produce BOARD_INVESTIGATION_REPORT at TASK scope on the board (or among the presets).
 type commissionsModel struct {
 	Roles               []types.String `tfsdk:"roles"`
 	Intake              types.String   `tfsdk:"intake"`
@@ -115,7 +115,7 @@ func roleAttributes() map[string]schema.Attribute {
 			Optional: true,
 			Description: "Who this role may commission for an investigation report (task RD4-12): an agent holding a task in" +
 				" this role asks one of these roles, and the report comes back pinned on its task. Every role named must" +
-				" produce INVESTIGATION_REPORT at TASK scope. roles = [] commissions nobody.",
+				" produce BOARD_INVESTIGATION_REPORT at TASK scope. roles = [] commissions nobody.",
 			Attributes: map[string]schema.Attribute{
 				"roles":                 schema.ListAttribute{Required: true, ElementType: types.StringType, Description: "The investigating roles, by name."},
 				"intake":                schema.StringAttribute{Optional: true, Description: "AUTO (queued at once; the default) or COORDINATOR (through intake)."},
