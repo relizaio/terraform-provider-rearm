@@ -46,6 +46,7 @@ type presetModel struct {
 	RequiredInputs       []requiredInputModel  `tfsdk:"required_inputs"`
 	ProducesOutputs      []producedOutputModel `tfsdk:"produces_outputs"`
 	Strength             *strengthModel        `tfsdk:"strength"`
+	Commissions          *commissionsModel     `tfsdk:"commissions"`
 	Source               *sourceModel          `tfsdk:"provenance"`
 }
 
@@ -53,7 +54,8 @@ func (p *presetModel) role() roleModel {
 	return roleModel{Name: p.Name, Prompt: p.Prompt, OrderIndex: p.OrderIndex, WipLimit: p.WipLimit,
 		RequireDistinctAgent: p.RequireDistinctAgent, Active: p.Active, Kind: p.Kind, Necessity: p.Necessity,
 		HumanGate: p.HumanGate, RequiredCapabilities: p.RequiredCapabilities, HopBudgetMicros: p.HopBudgetMicros,
-		BlindReview: p.BlindReview, RequiredInputs: p.RequiredInputs, ProducesOutputs: p.ProducesOutputs, Strength: p.Strength}
+		BlindReview: p.BlindReview, RequiredInputs: p.RequiredInputs, ProducesOutputs: p.ProducesOutputs, Strength: p.Strength,
+		Commissions: p.Commissions}
 }
 
 func (p *presetModel) setRole(r roleModel) {
@@ -62,6 +64,7 @@ func (p *presetModel) setRole(r roleModel) {
 	p.HumanGate, p.RequiredCapabilities, p.HopBudgetMicros = r.HumanGate, r.RequiredCapabilities, r.HopBudgetMicros
 	p.BlindReview = r.BlindReview
 	p.RequiredInputs, p.ProducesOutputs, p.Strength = r.RequiredInputs, r.ProducesOutputs, r.Strength
+	p.Commissions = r.Commissions
 }
 
 func NewAgentRolePresetResource() resource.Resource { return &agentRolePresetResource{} }
