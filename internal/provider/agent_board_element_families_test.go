@@ -75,12 +75,12 @@ func TestElementFamiliesReadBackAsConfigured(t *testing.T) {
 	}
 
 	moved := exported()
-	moved["elementFamilies"] = map[string]any{"T": map[string]any{"family": "test", "definedIn": []any{"TEST_REPORT"}}}
+	moved["elementFamilies"] = map[string]any{"T": map[string]any{"family": "test", "definedIn": []any{"BOARD_TEST_REPORT"}}}
 	d := boardModel()
 	d.ID = types.StringValue("platform")
 	d.ElementFamilies = []elementFamilyModel{withList(family("T", "test"), "TEST_PLAN")}
 	d.fromExport(moved, false)
-	if d.ElementFamilies[0].DefinedIn[0].ValueString() != "TEST_REPORT" {
+	if d.ElementFamilies[0].DefinedIn[0].ValueString() != "BOARD_TEST_REPORT" {
 		t.Errorf("a list changed outside Terraform reads back as ReARM has it, so the plan shows the drift: %v", d.ElementFamilies)
 	}
 
