@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	rearm "github.com/relizaio/rearm-client-go"
@@ -126,7 +129,10 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					},
 				},
 			},
-			"notes":               schema.StringAttribute{Optional: true, Description: "Free text shown on the keys page."},
+			"notes": schema.StringAttribute{Optional: true, Validators: []validator.String{notesLengthValidator{}},
+				Description: fmt.Sprintf("Free text shown on the keys page. At most %d characters (Unicode code points) "+
+					"after whitespace is collapsed; control and invisible characters become spaces, except the zero-width "+
+					"joiner and non-joiner.", maxNotesCodePoints)},
 			"status":              schema.StringAttribute{Optional: true, Description: "ACTIVE or INACTIVE; INACTIVE refuses every secret of the key."},
 			"secret_expires_days": schema.Int64Attribute{Optional: true, Description: "Days a secret minted for the key lives, 1 to 3650; unset mints secrets that do not expire."},
 			"session_max_minutes": schema.Int64Attribute{Optional: true, Description: "Bounds device-login sessions approved on the key, in minutes."},
@@ -262,14 +268,15 @@ func (r *apiKeyResource) read(ctx context.Context, m *apiKeyModel, full bool, d 
 }
 
 // fromView reads the key back: attributes the configuration sets (all of them on import), and the
-// computed ones. A value ReARM holds in an equivalent spelling -- a blank note ReARM stores as none,
-// object grants in another order -- keeps the configured spelling.
+// computed ones. A value ReARM holds in an equivalent spelling -- a note ReARM stores normalised (a
+// trailing newline, a tab, a double space, a blank stored as none), object grants in another order --
+// keeps the configured spelling.
 func (m *apiKeyModel) fromView(k map[string]any, full bool) {
 	m.ID = strVal(k["keyId"])
 	m.UUID = strVal(k["uuid"])
 	m.Name = strVal(k["name"])
 	if full || !m.Notes.IsNull() {
-		m.Notes = blankAsNone(m.Notes, strVal(k["notes"]))
+		m.Notes = notesAsConfigured(m.Notes, strVal(k["notes"]))
 	}
 	readString(&m.Status, k, "status", full)
 	readInt(&m.SecretExpiresDays, k, "secretExpiresDays", full)
@@ -293,12 +300,96 @@ var secretSlotType = types.ObjectType{AttrTypes: map[string]attr.Type{
 	"expires_date": types.StringType, "last_used_date": types.StringType,
 }}
 
-// blankAsNone keeps a configured blank where ReARM stores none; otherwise ReARM's value.
-func blankAsNone(configured, read types.String) types.String {
-	if !configured.IsNull() && !configured.IsUnknown() && strings.TrimSpace(configured.ValueString()) == "" && read.IsNull() {
+// maxNotesCodePoints is the longest note ReARM stores, in code points.
+const maxNotesCodePoints = 512
+
+// cleanedNotes is a note as ReARM cleans it before the length cut: controls, format characters (bidi,
+// zero-width), line and paragraph separators become a space, except the zero-width joiner and non-joiner;
+// runs of whitespace collapse to one space; spaces and joiners are stripped from the ends. An empty result
+// is "". An undecodable byte reads as U+FFFD, which is what the JSON encoding sends and ReARM keeps.
+func cleanedNotes(s string) string {
+	var b strings.Builder
+	pending := false
+	for _, r := range s {
+		// Z: space, line and paragraph separators; Cc: controls; Cf: format characters (bidi, zero-width).
+		if !isJoiner(r) && unicode.In(r, unicode.Z, unicode.Cc, unicode.Cf) {
+			pending = true
+			continue
+		}
+		if pending && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		pending = false
+		b.WriteRune(r)
+	}
+	return trimNotes(b.String())
+}
+
+// normalizedNotes is a note as ReARM stores it: cleanedNotes cut to maxNotesCodePoints, trimmed again.
+func normalizedNotes(s string) string {
+	return trimNotes(cutRunes(cleanedNotes(s), maxNotesCodePoints))
+}
+
+// isJoiner: the zero-width non-joiner and joiner, kept inside a note but never left at either end.
+func isJoiner(r rune) bool {
+	return r == '\u200C' || r == '\u200D'
+}
+
+func trimNotes(s string) string {
+	return strings.TrimFunc(s, func(r rune) bool { return r == ' ' || isJoiner(r) })
+}
+
+// cutRunes is the first limit code points of s.
+func cutRunes(s string, limit int) string {
+	n := 0
+	for i := range s {
+		if n == limit {
+			return s[:i]
+		}
+		n++
+	}
+	return s
+}
+
+// notesAsConfigured keeps the configured note where ReARM holds its normalised form (a trailing newline, a
+// tab, a double space, a blank ReARM stores as none); otherwise ReARM's value.
+func notesAsConfigured(configured, read types.String) types.String {
+	if configured.IsNull() || configured.IsUnknown() {
+		return read
+	}
+	stored := ""
+	if !read.IsNull() && !read.IsUnknown() {
+		stored = read.ValueString()
+	}
+	if normalizedNotes(configured.ValueString()) == stored {
 		return configured
 	}
 	return read
+}
+
+// notesLengthValidator refuses at plan a note ReARM would refuse at apply: one longer than
+// maxNotesCodePoints once cleaned. It measures the uncut cleaned form; the stored form is always cut.
+type notesLengthValidator struct{}
+
+var _ validator.String = notesLengthValidator{}
+
+func (notesLengthValidator) Description(context.Context) string {
+	return fmt.Sprintf("at most %d characters (Unicode code points) after whitespace is collapsed", maxNotesCodePoints)
+}
+
+func (v notesLengthValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (notesLengthValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if n := utf8.RuneCountInString(cleanedNotes(req.ConfigValue.ValueString())); n > maxNotesCodePoints {
+		resp.Diagnostics.AddAttributeError(req.Path, "Notes too long",
+			fmt.Sprintf("notes are at most %d characters (Unicode code points) after whitespace is collapsed; these are %d",
+				maxNotesCodePoints, n))
+	}
 }
 
 // permissionsFromView reads a FREEFORM key's permissions whole. Object grants follow the configured

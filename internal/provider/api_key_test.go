@@ -4,11 +4,17 @@ import (
 	"context"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	rearm "github.com/relizaio/rearm-client-go"
@@ -129,6 +135,103 @@ func TestApiKeyReadsBackKeepingEquivalentSpellings(t *testing.T) {
 	extra.fromView(view(), false)
 	if len(extra.Permissions.Objects) != 2 {
 		t.Errorf("grants ReARM has and the configuration not are read, so the plan shows them: %+v", extra.Permissions.Objects)
+	}
+}
+
+// A note ReARM stores normalised reads back in the configured spelling, so a heredoc, a tab or a doubled
+// space is no inconsistent result after apply; a note ReARM holds differently reads as ReARM's.
+func TestApiKeyNotesKeepTheConfiguredSpelling(t *testing.T) {
+	for _, c := range []struct {
+		configured, stored types.String
+		kept               bool
+	}{
+		{types.StringValue("CI pipeline\n"), types.StringValue("CI pipeline"), true},
+		{types.StringValue("a\tb"), types.StringValue("a b"), true},
+		{types.StringValue("a  b"), types.StringValue("a b"), true},
+		{types.StringValue("\u200Bci\u200B"), types.StringValue("ci"), true},
+		{types.StringValue("  "), types.StringNull(), true},
+		{types.StringValue("CI pipeline"), types.StringValue("Release automation"), false},
+		{types.StringNull(), types.StringValue("x"), false},
+	} {
+		want := c.stored
+		if c.kept {
+			want = c.configured
+		}
+		if got := notesAsConfigured(c.configured, c.stored); !got.Equal(want) {
+			t.Errorf("configured %v, stored %v: read %v, want %v", c.configured, c.stored, got, want)
+		}
+	}
+
+	m := freeformKey()
+	m.Notes = types.StringValue("CI pipeline\n")
+	v := view()
+	v["notes"] = "CI pipeline"
+	m.fromView(v, false)
+	if m.Notes.ValueString() != "CI pipeline\n" {
+		t.Errorf("a heredoc note reads back as configured: %q", m.Notes.ValueString())
+	}
+}
+
+// normalizedNotes mirrors ReARM's notes normaliser: joiners kept inside, no-break space collapsed, the
+// replacement character kept, a cut by code points that leaves no trailing space.
+func TestNormalizedNotes(t *testing.T) {
+	cut := strings.Repeat("x", 511) + " " + strings.Repeat("y", 88)
+	for in, want := range map[string]string{
+		"\U0001F469\u200D\U0001F4BB":            "\U0001F469\u200D\U0001F4BB",
+		"a\u00A0b":                              "a b",
+		"a\uFFFDb":                              "a\uFFFDb",
+		"a\u202Eb\u2028c":                       "a b c",
+		"\u200Dci\u200C":                        "ci",
+		"a\xffb":                                "a\uFFFDb",
+		" \t\n ":                                "",
+		cut:                                     strings.Repeat("x", 511),
+		"a\u0000b\tc\nd":                        "a b c d",
+		"\u200B\uFEFF":                          "",
+		strings.Repeat("a", 511) + "\U0001F600": strings.Repeat("a", 511) + "\U0001F600",
+		strings.Repeat("a", 512) + "\U0001F600": strings.Repeat("a", 512),
+	} {
+		if got := normalizedNotes(in); got != want {
+			t.Errorf("normalizedNotes(%q) = %q, want %q", in, got, want)
+		}
+	}
+	long := normalizedNotes(strings.Repeat("\u00E9", 600))
+	if n := utf8.RuneCountInString(long); n != maxNotesCodePoints || !utf8.ValidString(long) {
+		t.Errorf("a 600-rune note is cut to %d runes by code point: %d, valid %v", maxNotesCodePoints, n, utf8.ValidString(long))
+	}
+}
+
+// The plan refuses a note ReARM would refuse: longer than 512 once cleaned, not as written.
+func TestNotesLengthValidator(t *testing.T) {
+	doubled := strings.Join([]string{strings.Repeat("w", 56), strings.Repeat("w", 56), strings.Repeat("w", 56),
+		strings.Repeat("w", 56), strings.Repeat("w", 56), strings.Repeat("w", 56), strings.Repeat("w", 56),
+		strings.Repeat("w", 56), strings.Repeat("w", 56)}, "  ")
+	if utf8.RuneCountInString(doubled) != 520 {
+		t.Fatalf("fixture: %d runes", utf8.RuneCountInString(doubled))
+	}
+	for _, c := range []struct {
+		value  types.String
+		refuse bool
+	}{
+		{types.StringValue(strings.Repeat("x", 513)), true},
+		{types.StringValue(strings.Repeat("x", 512)), false},
+		{types.StringValue(doubled), false},
+		{types.StringValue(doubled + "x"), true},
+		{types.StringNull(), false},
+		{types.StringUnknown(), false},
+	} {
+		resp := &validator.StringResponse{}
+		notesLengthValidator{}.ValidateString(context.Background(),
+			validator.StringRequest{Path: path.Root("notes"), ConfigValue: c.value}, resp)
+		if resp.Diagnostics.HasError() != c.refuse {
+			t.Errorf("%d runes: refused %v, want %v", utf8.RuneCountInString(c.value.ValueString()), resp.Diagnostics.HasError(), c.refuse)
+		}
+	}
+
+	var sch resource.SchemaResponse
+	(&apiKeyResource{}).Schema(context.Background(), resource.SchemaRequest{}, &sch)
+	notes, _ := sch.Schema.Attributes["notes"].(schema.StringAttribute)
+	if len(notes.Validators) != 1 || notes.Validators[0] != validator.String(notesLengthValidator{}) {
+		t.Errorf("the notes attribute carries the length validator: %v", notes.Validators)
 	}
 }
 
