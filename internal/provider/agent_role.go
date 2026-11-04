@@ -32,6 +32,11 @@ type roleModel struct {
 	ProducesOutputs      []producedOutputModel `tfsdk:"produces_outputs"`
 	Strength             *strengthModel        `tfsdk:"strength"`
 	Commissions          *commissionsModel     `tfsdk:"commissions"`
+
+	// CoordinatorCheckpoint is in the board's role block only (agentBoardResource.Schema), never in
+	// roleAttributes(): the server refuses the key on a preset (CHECKPOINT_NOT_ON_PRESET), so a
+	// preset's role keeps it null and roleToSpec never sends it.
+	CoordinatorCheckpoint types.Bool `tfsdk:"coordinator_checkpoint"`
 }
 
 // commissionsModel is who a role may commission for a report (task RD4-12): roles by name, each of which must
@@ -156,6 +161,7 @@ func roleToSpec(r *roleModel) map[string]any {
 	putString(m, "humanGate", r.HumanGate)
 	putInt(m, "hopBudgetMicros", r.HopBudgetMicros)
 	putBool(m, "blindReview", r.BlindReview)
+	putBool(m, "coordinatorCheckpoint", r.CoordinatorCheckpoint)
 	if r.RequiredCapabilities != nil {
 		caps := []any{}
 		for _, c := range r.RequiredCapabilities {
@@ -228,6 +234,7 @@ func roleFromExport(r *roleModel, e map[string]any, full bool) {
 	readString(&r.HumanGate, e, "humanGate", full)
 	readInt(&r.HopBudgetMicros, e, "hopBudgetMicros", full)
 	readBool(&r.BlindReview, e, "blindReview", full)
+	readBool(&r.CoordinatorCheckpoint, e, "coordinatorCheckpoint", full)
 	if full || r.RequiredCapabilities != nil {
 		r.RequiredCapabilities = nil
 		for _, c := range list(e["requiredCapabilities"]) {

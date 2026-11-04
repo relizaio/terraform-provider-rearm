@@ -35,6 +35,11 @@ resource "rearm_branch" "platform_stable" {
 }
 ```
 
+The key is an organization (FREEFORM) key with write access on the organization. A personal
+`USER__` key, made by its owner on their profile page, is accepted wherever a FREEFORM key is, capped
+by its owner's own grants, and is the key for the operator-only role changes, such as which role
+carries a board's coordinator checkpoint.
+
 ## Resources
 
 | Resource | Identity | Backed by |
@@ -61,6 +66,16 @@ managed. The board's nested attributes (`settings`, a role's `strength`, `requir
 `produces_outputs`) follow the same rule: unset is not managed, `[]` is none. Destroying a board
 archives it, keeping its tasks and history; destroying a preset deactivates it. A change that
 leaves tasks waiting on a deactivated role comes back as a Terraform warning.
+
+A board role's `coordinator_checkpoint` puts the design checkpoint before that role: once a task's
+design is reviewed, the task stops at the coordinator, which splits it or sends it on. At most one
+active role per board carries it, and only a person changes which one: apply with a personal key
+(id `USER__...`) or set it in the ReARM UI. An apply from an organization key that would change it
+is refused, and Terraform shows the refusal on that role's `coordinator_checkpoint` with the role,
+the reason and the key's kind (never the rest of its id); an apply that declares the value the board
+already has passes under any key. Left unset, the attribute is not managed and a flag set in the UI
+stays; declared, it is re-asserted on every apply, so a change made in the UI shows as a plan diff.
+The attribute is not on `rearm_agent_role_preset`: ReARM keeps the checkpoint on a board's own roles.
 
 `settings.ladder` declares the board's level ladder, opt-in: its rungs in order (a name and an
 optional description), each numbered by its place from 0. With it every task has a work level (0

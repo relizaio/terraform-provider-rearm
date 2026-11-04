@@ -27,8 +27,9 @@ var (
 // agentBoardResource manages one task board by name, through the same board file the CLI applies
 // (ai-plans/agentic/declarative-boards.md): the board, its settings and its roles in one apply.
 type agentBoardResource struct {
-	client *rearm.Client
-	source *catalog.Source
+	client  *rearm.Client
+	source  *catalog.Source
+	keyKind rearm.ApiTypeEnum
 }
 
 type agentBoardModel struct {
@@ -251,6 +252,7 @@ func (r *agentBoardResource) Metadata(_ context.Context, req resource.MetadataRe
 func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	role := roleAttributes()
 	role["name"] = schema.StringAttribute{Required: true, Description: "Role name; roles are matched by name."}
+	role["coordinator_checkpoint"] = schema.BoolAttribute{Optional: true, Description: coordinatorCheckpointDescription}
 	resp.Schema = schema.Schema{
 		Description: "A ReARM agent task board, identified by name within the organization of the API key. " +
 			"Attributes left unset are not managed by Terraform and keep whatever ReARM has. Destroying the " +
@@ -368,9 +370,15 @@ func (r *agentBoardResource) Schema(_ context.Context, _ resource.SchemaRequest,
 
 func (r *agentBoardResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if pd := configured(req, resp); pd != nil {
-		r.client, r.source = pd.client, pd.source
+		r.client, r.source, r.keyKind = pd.client, pd.source, pd.keyKind
 	}
 }
+
+const coordinatorCheckpointDescription = "Operator-only. Before this role is queued on a task's reviewed design the task " +
+	"stops at the coordinator, which splits it or sends it on (design checkpoint). At most one active role per board. " +
+	"Which role carries it is changed only by a person: a personal API key (id USER__...) or the ReARM UI; an apply " +
+	"from an organization key that would change it is refused and names the role. Unset leaves the server's value " +
+	"alone; a declared value is re-asserted on every apply, so a change made in the UI shows as a plan diff. Not on a preset."
 
 // toSpec builds the board file from the plan: only what the configuration sets.
 func (m *agentBoardModel) toSpec() *catalog.BoardFile {
@@ -702,7 +710,7 @@ func emptyRole() roleModel {
 		Name: types.StringNull(), Prompt: types.StringNull(), OrderIndex: types.Int64Null(), WipLimit: types.Int64Null(),
 		RequireDistinctAgent: types.BoolNull(), Active: types.BoolNull(), Kind: types.StringNull(),
 		Necessity: types.StringNull(), HumanGate: types.StringNull(), HopBudgetMicros: types.Int64Null(),
-		BlindReview: types.BoolNull(),
+		BlindReview: types.BoolNull(), CoordinatorCheckpoint: types.BoolNull(),
 	}
 }
 
@@ -721,7 +729,69 @@ func (r *agentBoardResource) apply(ctx context.Context, m *agentBoardModel, d *d
 		d.err("ReARM apply failed", err.Error())
 		return false
 	}
-	return reportChanges(res, d, "board")
+	return reportBoardChanges(res, d, m.Roles, r.keyKind)
+}
+
+// reportBoardChanges is reportChanges with one refusal reported on the role it is about: ReARM's
+// refusal to change, from a key that is not a person's, which role carries the board's coordinator
+// checkpoint. It is recognised by its wording (AgentBoardService.checkpointChanges in rearm-saas,
+// both of whose messages say "coordinator checkpoint" and "only a person"): the DeclarativeChange
+// has no code. Should the wording move, the refusal falls through to reportChanges, as before.
+func reportBoardChanges(res *catalog.Result, d *diagAdder, roles []roleModel, keyKind rearm.ApiTypeEnum) bool {
+	ok := true
+	rest := &catalog.Result{}
+	for _, ch := range res.Changes {
+		if ch.Action != rearm.DeclarativeActionError || !isCheckpointRefusal(ch.Message) {
+			rest.Changes = append(rest.Changes, ch)
+			continue
+		}
+		for _, w := range ch.Warnings {
+			d.warn("ReARM: "+ch.Name, w)
+		}
+		d.attrErr(checkpointRefusalPath(roles, ch.Name), "ReARM refused to change which role carries the coordinator checkpoint",
+			fmt.Sprintf("%s: %s\n\n%s", ch.Name, ch.Message, checkpointRefusalHint(keyKind)))
+		ok = false
+	}
+	return reportChanges(rest, d, "board") && ok
+}
+
+// The two phrases every checkpointChanges refusal carries; the plain operator-only refusal and the
+// two-checkpoints one carry the first only.
+const (
+	checkpointRefusalSubject = "coordinator checkpoint"
+	checkpointRefusalReason  = "only a person"
+)
+
+func isCheckpointRefusal(message string) bool {
+	return strings.Contains(message, checkpointRefusalSubject) && strings.Contains(message, checkpointRefusalReason)
+}
+
+// checkpointRefusalPath is where Terraform shows the refusal: the role's coordinator_checkpoint when
+// the configuration sets it, the role when it does not (the flagged role deactivated, say), and the
+// roles list when the role is not in it (the flagged role left out of the file).
+func checkpointRefusalPath(roles []roleModel, name string) path.Path {
+	for i, r := range roles {
+		if !sameName(r.Name.ValueString(), name) {
+			continue
+		}
+		if r.CoordinatorCheckpoint.IsNull() || r.CoordinatorCheckpoint.IsUnknown() {
+			return path.Root("roles").AtListIndex(i)
+		}
+		return path.Root("roles").AtListIndex(i).AtName("coordinator_checkpoint")
+	}
+	return path.Root("roles")
+}
+
+// checkpointRefusalHint says what to do, naming the key's kind and nothing else of its id.
+func checkpointRefusalHint(keyKind rearm.ApiTypeEnum) string {
+	if keyKind == rearm.ApiTypeEnumUser {
+		return "This run's key is a personal (USER) key, which ReARM treats as its owner, so this refusal is " +
+			"unexpected: check that ReARM is at or after the 2026-11-02 release and that the key's owner is an " +
+			"active member of the organization."
+	}
+	return "Only a person changes which role carries a board's coordinator checkpoint. This run's key is a " + string(keyKind) +
+		" key, which ReARM treats as the application. Apply this change with a personal key (its id starts with " +
+		"USER__) or make it in the ReARM UI; an apply that declares the value the board already has passes under any key."
 }
 
 func (r *agentBoardResource) read(ctx context.Context, m *agentBoardModel, full bool, d *diagAdder) bool {
