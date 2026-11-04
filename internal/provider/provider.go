@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"os"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
@@ -44,7 +45,7 @@ func (p *rearmProvider) Metadata(_ context.Context, _ provider.MetadataRequest, 
 
 func (p *rearmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage ReARM configuration declaratively. Authenticates with a ReARM API key pair (FREEFORM keys with write access on the organization).",
+		Description: "Manage ReARM configuration declaratively. Authenticates with a ReARM API key pair (a FREEFORM key with write access on the organization, or a personal USER key for the operator-only changes such as a board's coordinator checkpoint).",
 		Attributes: map[string]schema.Attribute{
 			"uri": schema.StringAttribute{
 				Description: "Base URL of the ReARM instance, e.g. https://app.rearmhq.com. Falls back to REARM_URI.",
@@ -96,8 +97,16 @@ func (p *rearmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		return
 	}
 	resp.DataSourceData = client
-	resp.ResourceData = &providerData{client: client, source: resolveProviderSource(cfg.Source, os.Getenv)}
+	resp.ResourceData = &providerData{client: client, source: resolveProviderSource(cfg.Source, os.Getenv), keyKind: keyKindOf(keyID)}
 	resp.EphemeralResourceData = resp.ResourceData
+}
+
+// keyKindOf is the kind of an API key, the text of its id before the first "__" (USER, FREEFORM,
+// ...; the server's own id format, <type>__<uuid>[__ord__<order>]), or the whole id when it has no
+// "__". Nothing after the prefix is kept: the kind is printed in diagnostics, the rest of the id is not.
+func keyKindOf(keyID string) rearm.ApiTypeEnum {
+	kind, _, _ := strings.Cut(strings.TrimSpace(keyID), "__")
+	return rearm.ApiTypeEnum(kind)
 }
 
 func (p *rearmProvider) Resources(_ context.Context) []func() resource.Resource {

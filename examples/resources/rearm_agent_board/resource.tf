@@ -109,5 +109,14 @@ resource "rearm_agent_board" "platform" {
         strength_category = "REVIEWER"
       }
     },
+    {
+      name                  = "coder"
+      prompt                = file("${path.module}/prompts/coder.md")
+      required_capabilities = ["CODE_PUSH"]
+      # The design checkpoint: a task stops at the coordinator before it reaches the coder. Person-only:
+      # apply it with a personal key (USER__...), or set it in the UI and leave this unset; under an
+      # organization (FREEFORM) key ReARM refuses the apply.
+      # coordinator_checkpoint = true
+    },
   ]
 }

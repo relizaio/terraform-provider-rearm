@@ -90,11 +90,13 @@ func warnIfProvenanceOnly(req resource.ModifyPlanRequest, resp *resource.ModifyP
 	}
 }
 
-// providerData is what the provider hands every resource: the client, and the provider-level
-// source already resolved against the CI environment.
+// providerData is what the provider hands every resource: the client, the provider-level source
+// already resolved against the CI environment, and the kind of the API key (keyKindOf), which the
+// board resource names when ReARM refuses a change only a person may make.
 type providerData struct {
-	client *rearm.Client
-	source *catalog.Source
+	client  *rearm.Client
+	source  *catalog.Source
+	keyKind rearm.ApiTypeEnum
 }
 
 // configured unpacks the provider data in a resource's Configure; nil means it is not configured yet.
