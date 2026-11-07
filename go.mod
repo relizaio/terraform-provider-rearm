@@ -7,7 +7,7 @@ toolchain go1.26.10
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
-	github.com/relizaio/rearm-client-go v0.7.2-0.20261106081004-5b5b1b4e1ddb
+	github.com/relizaio/rearm-client-go v0.9.2-0.20261107043534-5d517ec8e9e7
 )
 
 require (
